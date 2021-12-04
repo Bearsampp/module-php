@@ -1,12 +1,12 @@
-[![GitHub release](https://img.shields.io/github/release/neard/module-php.svg?style=flat-square)](https://github.com/neard/module-php/releases/latest)
-![Total downloads](https://img.shields.io/github/downloads/neard/module-php/total.svg?style=flat-square)
+[![GitHub release](https://img.shields.io/github/release/bearsampp/module-php.svg?style=flat-square)](https://github.com/bearsampp/module-php/releases/latest)
+![Total downloads](https://img.shields.io/github/downloads/bearsampp/module-php/total.svg?style=flat-square)
 
-This is a module of [Neard project](https://github.com/neard/neard) involving PHP.
+This is a module of [Bearsampp project](https://github.com/bearsampp/bearsampp) involving PHP.
 
 ## Documentation and downloads
 
-https://neard.io/modules/php
+https://bearsampp.github.io/modules/php
 
 ## Issues
 
-Issues must be reported on [Neard repository](https://github.com/neard/neard/issues).
+Issues must be reported on [Bearsampp repository](https://github.com/bearsampp/bearsampp/issues).

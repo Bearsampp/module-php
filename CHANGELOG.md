@@ -134,7 +134,7 @@
 ## r5 (2016/02/09)
 
 * PHP 5.5.32, 5.6.18, 7.0.3
-* Bug in neard.conf for 5.6.17 and 7.0.2 (neard/neard#110)
+* Bug in bearsampp.conf for 5.6.17 and 7.0.2 (neard/neard#110)
 * Missing Xdebug dll in PHP 5.5.31 release (neard/neard#111)
 
 ## r4 (2016/01/28)

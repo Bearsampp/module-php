@@ -65,9 +65,9 @@ foreach ($filesToScan as $fileToScan) {
 }
 echo round(Utils::getMicrotime() - $startTime, 3) . 's => ' . $countChangedFiles . ' files and ' . $countChangedOcc . ' occurences changed' . PHP_EOL . PHP_EOL;
 
-// Write neard.conf
-echo 'Writing neard.conf...' . PHP_EOL;
-file_put_contents($pearPath . '/neard.conf', 'pearVersion = "' . $pearVersion . '"');
+// Write bearsampp.conf
+echo 'Writing bearsampp.conf...' . PHP_EOL;
+file_put_contents($pearPath . '/bearsampp.conf', 'pearVersion = "' . $pearVersion . '"');
 
 // Clean
 echo 'Cleaning...';

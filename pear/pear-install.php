@@ -31,7 +31,7 @@ $countChangedOcc = 0;
 $countChangedFiles = 0;
 $unixFromPath = Utils::formatUnixPath($phpPath);
 $windowsFromPath = Utils::formatWindowsPath($phpPath);
-$unixToPath = Utils::formatUnixPath('~NEARD_LIN_PATH~/bin/php/php' . $phpVersion);
+$unixToPath = Utils::formatUnixPath('~BEARSAMPP_LIN_PATH~/bin/php/php' . $phpVersion);
 $windowsToPath = Utils::formatWindowsPath('~NEARD_WIN_PATH~/bin/php/php' . $phpVersion);
 
 $filesToScan = Utils::getFilesToScan(array(

@@ -60,7 +60,7 @@ foreach ($filesToScan as $fileToScan) {
         $countChangedFiles++;
         $countChangedOcc += $tmpCountChangedOcc;
         file_put_contents($fileToScan, $fileContent);
-        file_put_contents($fileToScan . '.nrd', $fileContent);
+        file_put_contents($fileToScan . '.ber', $fileContent);
     }
 }
 echo round(Utils::getMicrotime() - $startTime, 3) . 's => ' . $countChangedFiles . ' files and ' . $countChangedOcc . ' occurences changed' . PHP_EOL . PHP_EOL;

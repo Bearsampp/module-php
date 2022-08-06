@@ -113,18 +113,8 @@
                 </copy>
               </then>
             </if>
-            <if>
-              <and>
-                <equals arg1="@{phpext}" arg2="ssh2"/>
-                <not><available file="${php.prep.path}/libssh2.dll" type="file"/></not>
-                <available file="${phpext.dest}/libssh2.dll" type="file"/>
-              </and>
-              <then>
-                <copy file="${phpext.dest}/libssh2.dll" todir="${php.prep.path}"/>
-              </then>
-            </if>
 
-            <!-- Echo extension string to temp file -->
+             <!-- Echo extension string to temp file -->
             <if>
               <not><equals arg1="@{phpext}" arg2="xdebug"/></not>
               <then>

@@ -116,6 +116,18 @@
 
              <!-- Echo extension string to temp file -->
             <if>
+              <equals arg1="@{phpext}" arg2="memcache"/>
+              <then>
+                <echo message="extension=php_@{phpext}${line.separator}" file="${build.tmp.path}/php_extensions.tmp" append="true"/>
+              </then>
+            </if>
+            <if>
+              <equals arg1="@{phpext}" arg2="imagick"/>
+              <then>
+                <echo message="extension=php_@{phpext}${line.separator}" file="${build.tmp.path}/php_extensions.tmp" append="true"/>
+              </then>
+            </if>
+            <if>
               <not><equals arg1="@{phpext}" arg2="xdebug"/></not>
               <then>
                 <echo message="extension=php_@{phpext}.dll${line.separator}" file="${build.tmp.path}/php_extensions.tmp" append="true"/>

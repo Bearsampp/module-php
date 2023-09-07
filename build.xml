@@ -181,7 +181,7 @@
               <equals arg1="@{phpdep}" arg2="imagemagick"/>
               <then>
                 <copy todir="${php.prep.path}/imagick" overwrite="true">
-                  <fileset dir="${phpdep.dest}/bin" includes="
+                  <fileset dir="${phpdep.dest}" includes="
                     *.exe,
                     *.dll"
                   />

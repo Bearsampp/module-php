@@ -1,197 +1,44 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project name="module-php" basedir=".">
+<project name="TextProcessing" default="executeSigcheck">
 
-  <dirname property="project.basedir" file="${ant.file.module-php}"/>
-  <property name="root.dir" location="${project.basedir}/.."/>
-  <property name="build.properties" value="${project.basedir}/build.properties"/>
-  <property file="${build.properties}"/>
+  <!-- Define properties -->
+  <property name="sigcheck" value="sigcheck -q E:\Bearsampp-development\bearsampp-build\tmp\dl\php-8.1.x_memcache.dll"/>
+  <property name="output.file" value="sigcheck_output.txt"/>
 
-  <!-- Bearsampp dev -->
-  <property name="dev.path" location="${root.dir}/dev"/>
-  <fail unless="dev.path" message="Project 'dev' not found in ${dev.path}"/>
-  <echo message="Bearsampp dev found in ${dev.path}" level="debug"/>
+  <target name="executeSigcheck">
+    <!-- Execute sigcheck and save the output to a file -->
+    <exec executable="cmd" output="${output.file}" failonerror="false">
+      <arg value="/c"/>
+      <arg value="${sigcheck}"/>
+    </exec>
 
-  <!-- Import build-commons.xml -->
-  <import file="${dev.path}/build/build-commons.xml"/>
-  <!-- Import build-bundle.xml -->
-  <import file="${dev.path}/build/build-bundle.xml"/>
+    <!-- Read the content of the output file and extract "MachineType" -->
+    <loadfile property="arch" srcfile="${output.file}">
+      <filterchain>
+        <linecontains>
+          <contains value="MachineType:" />
+        </linecontains>
+        <tokenfilter>
+          <replaceregex pattern="^.*MachineType:\s*(\S+).*$" replace="\1"/>
+        </tokenfilter>
+      </filterchain>
+    </loadfile>
 
-  <property name="php-ext.path" location="${project.basedir}/ext"/>
-  <property name="pear-install.path" location="${project.basedir}/pear"/>
+    <!-- Read the content of the output file and extract "Description" -->
+    <loadfile property="desc" srcfile="${output.file}">
+      <filterchain>
+        <linecontains>
+          <contains value="Description:" />
+        </linecontains>
+        <tokenfilter>
+          <replaceregex pattern="^.*Description:\s*(\S+).*$" replace="\1"/>
+        </tokenfilter>
+      </filterchain>
+    </loadfile>
 
-  <target name="release.build">
-    <basename property="bundle.folder" file="${bundle.path}"/>
-    <replaceproperty src="bundle.folder" dest="bundle.version" replace="${bundle.name}" with=""/>
-
-    <getmoduleuntouched name="${bundle.name}" version="${bundle.version}" propSrcDest="bundle.srcdest" propSrcFilename="bundle.srcfilename"/>
-    <assertfile file="${bundle.srcdest}/php.exe"/>
-
-    <property name="php.prep.path" location="${bundle.tmp.prep.path}/${bundle.name}${bundle.version}"/>
-    <delete dir="${php.prep.path}"/>
-    <mkdir dir="${php.prep.path}"/>
-    <copy todir="${php.prep.path}" overwrite="true">
-      <fileset dir="${bundle.srcdest}" excludes="
-        dev/**,
-        extras/**,
-        PEAR/**,
-        *.reg,
-        install.txt,
-        go-pear.bat,
-        news.txt,
-        php.gif,
-        php.ini*,
-        snapshot.txt"
-      />
-    </copy>
-    <copy todir="${php.prep.path}" overwrite="true">
-      <fileset dir="${bundle.path}" defaultexcludes="yes"/>
-    </copy>
-
-    <!-- Install PEAR -->
-    <if>
-      <available file="${php.prep.path}/pear.properties" type="file"/>
-      <then>
-        <property prefix="phppear" file="${php.prep.path}/pear.properties"/>
-
-        <!-- Copy pear-install scripts -->
-        <echo message="Copying pear-install scripts..."/>
-        <delete dir="${php.prep.path}/pear-install"/>
-        <copy todir="${php.prep.path}/pear-install">
-          <fileset dir="${pear-install.path}" defaultexcludes="yes"/>
-        </copy>
-        <assertfile file="${php.prep.path}/pear-install/pear-install.bat"/>
-
-        <!-- Download phar -->
-        <download url="${phppear.pear}" returnProperty="phppear.dest"/>
-        <copy file="${phppear.dest}"
-              tofile="${php.prep.path}/pear-install/install-pear-nozlib.phar" overwrite="true"/>
-
-        <!-- Launch phar -->
-        <echo message="Processing phar..."/>
-        <exec executable="${php.prep.path}/pear-install/pear-install.bat"
-              dir="${php.prep.path}/pear-install"
-              failonerror="true"
-        />
-
-        <delete dir="${php.prep.path}/pear-install"/>
-        <delete file="${php.prep.path}/pear.properties"/>
-      </then>
-    </if>
-
-    <!-- Extensions -->
-    <if>
-      <available file="${php.prep.path}/exts.properties" type="file"/>
-      <then>
-        <echo message="Processing extensions..."/>
-        <delete file="${build.tmp.path}/php_extensions.tmp"/>
-        <touch file="${build.tmp.path}/php_extensions.tmp"/>
-        <property prefix="phpexts" file="${php.prep.path}/exts.properties"/>
-        <propertyselector property="phpexts" match="phpexts\.(.*)" select="\1"/>
-        <for list="${phpexts}" param="phpext">
-          <sequential>
-            <var name="phpext.version" unset="true"/>
-            <var name="phpext.dest" unset="true"/>
-            <var name="phpext.dll" unset="true"/>
-            <propertyregex property="phpext.version" input="${phpexts.@{phpext}}" regexp="php_.*-(.*?(-dev))" select="\1"/>
-            <propertyregex property="phpext.version" input="${phpexts.@{phpext}}" regexp="php_.*-(.*)-(5\.|7\.)" select="\1"/>
-
-            <!-- Download ext -->
-            <download url="${phpexts.@{phpext}}" returnProperty="phpext.dest"/>
-            <echo message="Extension path: ${phpext.dest}"/>
-            <condition property="phpext.dll" value="${phpext.dest}/php_@{phpext}.dll"><available file="${phpext.dest}/php_@{phpext}.dll" type="file"/></condition>
-            <condition property="phpext.dll" value="${phpext.dest}"><matches string="${phpext.dest}" pattern="\.dll$"/></condition>
-            <fail unless="phpext.dll" message="Main dll not found"/>
-
-            <!-- Copy ext -->
-            <echo message="Copy @{phpext} ${phpext.version} extension..."/>
-            <copy file="${phpext.dll}" tofile="${php.prep.path}/ext/php_@{phpext}.dll" overwrite="true"/>
-            <if>
-              <equals arg1="@{phpext}" arg2="imagick"/>
-              <then>
-                <copy todir="${php.prep.path}/imagick">
-                  <fileset dir="${phpext.dest}" includes="CORE_*.dll"/>
-                </copy>
-              </then>
-            </if>
-
-            <!-- Echo extension string to temp file -->
-            <if>
-              <not><equals arg1="@{phpext}" arg2="xdebug"/></not>
-              <then>
-                <echo message="extension=@{phpext}${line.separator}" file="${build.tmp.path}/php_extensions.tmp" append="true"/>
-              </then>
-            </if>
-          </sequential>
-        </for>
-
-        <!-- Inject in php.ini -->
-        <if>
-          <length file="${build.tmp.path}/php_extensions.tmp" when="equal" length="0" />
-          <then>
-            <property name="php.extensions" value=""/>
-          </then>
-          <else>
-            <loadfile property="php.extensions" srcFile="${build.tmp.path}/php_extensions.tmp"/>
-          </else>
-        </if>
-        <echo message="${line.separator}PHP extensions to inject in php.ini :${line.separator}${php.extensions}"/>
-        <copy todir="${php.prep.path}" overwrite="true">
-          <filterset>
-            <filter token="PHP_EXTENSIONS" value="${php.extensions}"/>
-          </filterset>
-          <resources>
-            <file file="${bundle.path}/php.ini"/>
-            <file file="${bundle.path}/php.ini.ber"/>
-          </resources>
-        </copy>
-
-        <delete file="${php.prep.path}/exts.properties"/>
-      </then>
-      <else>
-        <copy todir="${php.prep.path}" overwrite="true">
-          <filterset>
-            <filter token="PHP_EXTENSIONS" value=""/>
-          </filterset>
-          <resources>
-            <file file="${bundle.path}/php.ini"/>
-            <file file="${bundle.path}/php.ini.ber"/>
-          </resources>
-        </copy>
-      </else>
-    </if>
-
-    <!-- Dependencies -->
-    <if>
-      <available file="${php.prep.path}/deps.properties" type="file"/>
-      <then>
-        <echo message="Processing dependencies..."/>
-        <property prefix="phpdeps" file="${php.prep.path}/deps.properties"/>
-        <propertyselector property="phpdeps" match="phpdeps\.(.*)" select="\1"/>
-        <for list="${phpdeps}" param="phpdep">
-          <sequential>
-            <var name="phpdep.dest" unset="true"/>
-
-            <!-- Download dep -->
-            <download url="${phpdeps.@{phpdep}}" returnProperty="phpdep.dest"/>
-            <echo message="Dependency path: ${phpdep.dest}"/>
-
-            <!-- Copy dep -->
-            <echo message="Copy @{phpdep} dependency..."/>
-            <if>
-              <equals arg1="@{phpdep}" arg2="imagemagick"/>
-              <then>
-                <copy todir="${php.prep.path}/imagick" overwrite="true">
-                  <fileset dir="${phpdep.dest}" includes="
-                    *.exe,
-                    *.dll"
-                  />
-                </copy>
-              </then>
-            </if>
-          </sequential>
-        </for>
-        <delete file="${php.prep.path}/deps.properties"/>
-      </then>
-    </if>
+    <!-- Echo the "Descriptione" -->
+    <echo message="Descriptione: ${desc}" />
+    <!-- Echo the "MachineType" -->
+    <echo message="MachineType: ${arch}" />
   </target>
+
 </project>

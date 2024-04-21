@@ -148,7 +148,7 @@
                 <arg value="-NoLogo"/>
                 <arg value="-NoProfile"/>
                 <arg value="-Command"/>
-                <arg value="(New-Object -ComObject SAPI.SpVoice).Speak(&quot;OH NO! the .dll is corrupted&quot;)"/>
+                <arg value="(New-Object -ComObject SAPI.SpVoice).Speak(&quot;OH NO! the ${phpext.dest}/php_@{phpext}.dll file is corrupted&quot;)"/>
               </exec>
             </fail>
 

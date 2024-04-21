@@ -64,13 +64,13 @@
         <!-- Download phar -->
         <download url="${phppear.pear}" returnProperty="phppear.dest"/>
         <copy file="${phppear.dest}"
-          tofile="${php.prep.path}/pear-install/install-pear-nozlib.phar" overwrite="true"/>
+              tofile="${php.prep.path}/pear-install/install-pear-nozlib.phar" overwrite="true"/>
 
         <!-- Launch phar -->
         <echo message="Processing phar..."/>
         <exec executable="${php.prep.path}/pear-install/pear-install.bat"
-          dir="${php.prep.path}/pear-install"
-          failonerror="true"
+              dir="${php.prep.path}/pear-install"
+              failonerror="true"
         />
 
         <delete dir="${php.prep.path}/pear-install"/>
@@ -114,7 +114,7 @@
               </then>
             </if>
 
-             <!-- Echo extension string to temp file -->
+            <!-- Echo extension string to temp file -->
             <if>
               <not><equals arg1="@{phpext}" arg2="xdebug"/></not>
               <then>
@@ -137,7 +137,7 @@
         <echo message="${line.separator}PHP extensions to inject in php.ini :${line.separator}${php.extensions}"/>
         <copy todir="${php.prep.path}" overwrite="true">
           <filterset>
-           <filter token="PHP_EXTENSIONS" value="${php.extensions}"/>
+            <filter token="PHP_EXTENSIONS" value="${php.extensions}"/>
           </filterset>
           <resources>
             <file file="${bundle.path}/php.ini"/>

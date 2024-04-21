@@ -19,6 +19,54 @@
   <property name="php-ext.path" location="${project.basedir}/ext"/>
   <property name="pear-install.path" location="${project.basedir}/pear"/>
 
+  <target name="sigcheck" if="${phpext.dest.endsWith('.dll')}">
+    <!-- Check sigcheck output -->
+    <exec executable="sigcheck" outputproperty="sigcheck.output" errorproperty="sigcheck.error">
+      <arg value="-q"/>
+      <arg value="${phpext.dest}"/>
+    </exec>
+
+    <!-- Extract description from sigcheck output -->
+    <propertyregex input="${sigcheck.output}" regexp="Description:\s+(.*)" select="\1" property="description" casesensitive="false"/>
+
+    <!-- Extract machine type from sigcheck output -->
+    <propertyregex input="${sigcheck.output}" regexp="MachineType:\s+(.*)" select="\1" property="machine.type" casesensitive="false"/>
+
+    <!-- Echo description and machine type for debugging -->
+    <echo>Description before: ${description}, MachineType before: ${machine.type}</echo>
+
+    <!-- Check if description is empty -->
+    <fail unless="description" message="Description is empty"/>
+
+    <!-- Execute PowerShell command if description is empty -->
+    <if>
+      <equals arg1="${description}" arg2="" trim="true"/>
+      <then>
+        <exec executable="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" failonerror="true">
+          <arg value="-NoLogo"/>
+          <arg value="-NoProfile"/>
+          <arg value="-Command"/>
+          <arg value="(New-Object -ComObject SAPI.SpVoice).Speak('OH NO! the php_@{phpext} file is corrupted, the description is null')" />
+        </exec>
+      </then>
+    </if>
+
+    <!-- Execute PowerShell command if machine type is not 64-bit -->
+    <if>
+      <not>
+        <equals arg1="${machine.type}" arg2="64-bit" trim="true" casesensitive="false"/>
+      </not>
+      <then>
+        <exec executable="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" failonerror="true">
+          <arg value="-NoLogo"/>
+          <arg value="-NoProfile"/>
+          <arg value="-Command"/>
+          <arg value="(New-Object -ComObject SAPI.SpVoice).Speak('OH NO! the php_@{phpext} file is not built for x64')" />
+        </exec>
+      </then>
+    </if>
+  </target>
+
   <target name="release.build">
     <basename property="bundle.folder" file="${bundle.path}"/>
     <replaceproperty src="bundle.folder" dest="bundle.version" replace="${bundle.name}" with=""/>
@@ -102,55 +150,8 @@
             <condition property="phpext.dll" value="${phpext.dest}"><matches string="${phpext.dest}" pattern="\.dll$"/></condition>
             <fail unless="phpext.dll" message="Main dll not found"/>
 
-            <!-- Check sigcheck output -->
-            <exec executable="sigcheck" outputproperty="sigcheck.output">
-              <arg value="-q"/>
-              <arg value="${phpext.dest}/php_@{phpext}.dll"/>
-            </exec>
-
-            <propertyregex
-              input="${sigcheck.output}"
-              regexp="Description: (.*)"
-              select="\1"
-              property="description"
-              casesensitive="false"
-            />
-
-            <propertyregex
-              input="${sigcheck.output}"
-              regexp="MachineType: (.*)"
-              select="\1"
-              property="machine.type"
-              casesensitive="false"
-            />
-
-            <condition property="description.empty">
-              <ispropertytrue property="description" value=""/>
-            </condition>
-
-            <condition property="machine.type.not.64bit">
-              <not>
-                <equals arg1="${machine.type}" arg2="64-bit" trim="true" casesensitive="false"/>
-              </not>
-            </condition>
-
-            <fail if="description.empty" message="@{style.bright-orange}Description field is empty for ${phpext.dest}/php_@{phpext}.dll@{style.end-color}">
-              <exec executable="%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" failonerror="true">
-                <arg value="-NoLogo"/>
-                <arg value="-NoProfile"/>
-                <arg value="-Command"/>
-                <arg value="(New-Object -ComObject SAPI.SpVoice).Speak(&quot;OH NO! the .dll is corrupted&quot;)"/>
-              </exec>
-            </fail>
-
-            <fail if="machine.type.not.64bit" message="@{style.bright-orange}MachineType is not 64-bit for ${phpext.dest}/php_@{phpext}.dll@{style.end-color}">
-              <exec executable="%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" failonerror="true">
-                <arg value="-NoLogo"/>
-                <arg value="-NoProfile"/>
-                <arg value="-Command"/>
-                <arg value="(New-Object -ComObject SAPI.SpVoice).Speak(&quot;OH NO! the .dll is corrupted&quot;)"/>
-              </exec>
-            </fail>
+            <!-- Call the sigcheck target -->
+            <antcall target="sigcheck"/>
 
             <!-- Copy ext -->
             <echo message="Copy @{phpext} ${phpext.version} extension..."/>

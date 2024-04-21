@@ -102,6 +102,56 @@
             <condition property="phpext.dll" value="${phpext.dest}"><matches string="${phpext.dest}" pattern="\.dll$"/></condition>
             <fail unless="phpext.dll" message="Main dll not found"/>
 
+            <!-- Check sigcheck output -->
+            <exec executable="sigcheck" outputproperty="sigcheck.output">
+              <arg value="-q"/>
+              <arg value="${phpext.dest}/php_@{phpext}.dll"/>
+            </exec>
+
+            <propertyregex
+              input="${sigcheck.output}"
+              regexp="Description: (.*)"
+              select="\1"
+              property="description"
+              casesensitive="false"
+            />
+
+            <propertyregex
+              input="${sigcheck.output}"
+              regexp="MachineType: (.*)"
+              select="\1"
+              property="machine.type"
+              casesensitive="false"
+            />
+
+            <condition property="description.empty">
+              <ispropertytrue property="description" value=""/>
+            </condition>
+
+            <condition property="machine.type.not.64bit">
+              <not>
+                <equals arg1="${machine.type}" arg2="64-bit" trim="true" casesensitive="false"/>
+              </not>
+            </condition>
+
+            <fail if="description.empty" message="@{style.bright-orange}Description field is empty for ${phpext.dest}/php_@{phpext}.dll@{style.end-color}">
+              <exec executable="%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" failonerror="true">
+                <arg value="-NoLogo"/>
+                <arg value="-NoProfile"/>
+                <arg value="-Command"/>
+                <arg value="(New-Object -ComObject SAPI.SpVoice).Speak(&quot;OH NO! the .dll is corrupted&quot;)"/>
+              </exec>
+            </fail>
+
+            <fail if="machine.type.not.64bit" message="@{style.bright-orange}MachineType is not 64-bit for ${phpext.dest}/php_@{phpext}.dll@{style.end-color}">
+              <exec executable="%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" failonerror="true">
+                <arg value="-NoLogo"/>
+                <arg value="-NoProfile"/>
+                <arg value="-Command"/>
+                <arg value="(New-Object -ComObject SAPI.SpVoice).Speak(&quot;OH NO! the .dll is corrupted&quot;)"/>
+              </exec>
+            </fail>
+
             <!-- Copy ext -->
             <echo message="Copy @{phpext} ${phpext.version} extension..."/>
             <copy file="${phpext.dll}" tofile="${php.prep.path}/ext/php_@{phpext}.dll" overwrite="true"/>

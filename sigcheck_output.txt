@@ -3,13 +3,13 @@ Sigcheck v2.90 - File version and signature viewer
 Copyright (C) 2004-2022 Mark Russinovich
 Sysinternals - www.sysinternals.com
 
-e:\bearsampp-development\bearsampp-build\tmp\dl\php-8.1.x_memcache.dll:
+e:\bearsampp-development\bearsampp-build\tmp\dl\php-8.2.x_memcache.dll:
 	Verified:	Unsigned
-	Link date:	15:14 22-Sep-22
+	Link date:	09:55 24-Nov-23
 	Publisher:	n/a
 	Company:	 
-	Description:	arch:x64-avx vcver:14.29[vs16] commit:96910ce tag:8.0.1 branch:NON_BLOCKING_IO_php8 date:2022-07-29 php:8.1 build:ts
+	Description:	arch:x64 vcver:14.29[vs16] php-src:8.2 build:ts commit:972b554 branch:main date:2023-05-04
 	Product:	php:php_memcache
-	Prod version:	8.0.1
-	File version:	8.0.1
+	Prod version:	8.2
+	File version:	8.2.0.0
 	MachineType:	64-bit

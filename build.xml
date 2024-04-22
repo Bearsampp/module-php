@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="module-php" basedir=".">
 
-  <dirname property="project.basedir" file="${ant.file.module-php}"/>
+  <!-- Import sigcheck.xml -->
+  <import file="sigcheck.xml"/>
+
+  <!-- Define project properties -->
+  <property name="project.basedir" location="."/>
   <property name="root.dir" location="${project.basedir}/.."/>
   <property name="build.properties" value="${project.basedir}/build.properties"/>
   <property file="${build.properties}"/>
@@ -16,16 +20,30 @@
   <!-- Import build-bundle.xml -->
   <import file="${dev.path}/build/build-bundle.xml"/>
 
+  <!-- Define directories -->
   <property name="php-ext.path" location="${project.basedir}/ext"/>
   <property name="pear-install.path" location="${project.basedir}/pear"/>
+  <property name="bundle.tmp.prep.path" location="${project.basedir}/tmp/prep"/>
+  <property name="build.tmp.path" location="${project.basedir}/tmp"/>
 
+  <!-- Define the executeSigcheck target -->
+  <target name="executeSigcheck">
+    <!-- Invoke the executeSigcheck target from sigcheck.xml -->
+    <ant antfile="sigcheck.xml" target="executeSigcheck"/>
+  </target>
+
+
+  <!-- Main target for release build -->
   <target name="release.build">
+    <!-- Define the bundle folder -->
     <basename property="bundle.folder" file="${bundle.path}"/>
     <replaceproperty src="bundle.folder" dest="bundle.version" replace="${bundle.name}" with=""/>
 
+    <!-- Get the PHP module -->
     <getmoduleuntouched name="${bundle.name}" version="${bundle.version}" propSrcDest="bundle.srcdest" propSrcFilename="bundle.srcfilename"/>
     <assertfile file="${bundle.srcdest}/php.exe"/>
 
+    <!-- Prepare PHP -->
     <property name="php.prep.path" location="${bundle.tmp.prep.path}/${bundle.name}${bundle.version}"/>
     <delete dir="${php.prep.path}"/>
     <mkdir dir="${php.prep.path}"/>
@@ -101,6 +119,9 @@
             <condition property="phpext.dll" value="${phpext.dest}/php_@{phpext}.dll"><available file="${phpext.dest}/php_@{phpext}.dll" type="file"/></condition>
             <condition property="phpext.dll" value="${phpext.dest}"><matches string="${phpext.dest}" pattern="\.dll$"/></condition>
             <fail unless="phpext.dll" message="Main dll not found"/>
+
+            <!-- Call the Sigcheck routine -->
+            <antcall target="executeSigcheck"/>
 
             <!-- Copy ext -->
             <echo message="Copy @{phpext} ${phpext.version} extension..."/>

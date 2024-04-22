@@ -1,78 +1,61 @@
-<project name="Sigcheck" default="executeSigcheck">
+<project name = "Sigcheck" default = "executeSigcheck">
 
   <!-- Define properties -->
-  <property name="sigcheck" value="sigcheck -q"/>
-  <property name="output.file" value="sigcheck_output.txt"/>
+  <property name = "sigcheck" value = "sigcheck -q" />
+  <property name = "output.file" value = "sigcheck_output.txt" />
 
   <!-- Define a property for the PHP extension DLL -->
-  <property name="phpext.dll" value="${phpext.dll}"/>
+  <property name = "phpext.dll" value = "${phpext.dll}" />
 
-  <target name="executeSigcheck">
+  <target name = "executeSigcheck">
     <!-- Execute sigcheck and save the output to a file -->
-    <exec executable="cmd" output="${output.file}" failonerror="false">
-      <arg value="/c"/>
+    <exec executable = "cmd" output = "${output.file}" failonerror = "false">
+      <arg value = "/c" />
       <!-- Pass the value of ${phpext.dll} as an argument to sigcheck -->
-      <arg value="${sigcheck}"/>
-      <arg value="${phpext.dll}"/>
+      <arg value = "${sigcheck}" />
+      <arg value = "${phpext.dll}" />
     </exec>
 
     <!-- Read the content of the output file and extract "MachineType" -->
-    <loadfile property="arch" srcfile="${output.file}">
+    <loadfile property = "arch" srcfile = "${output.file}">
       <filterchain>
         <linecontains>
-          <contains value="MachineType:" />
+          <contains value = "MachineType:" />
         </linecontains>
         <tokenfilter>
-          <replaceregex pattern="^.*MachineType:\s*(\S+).*$" replace="\1"/>
+          <replaceregex pattern = "^.*MachineType:\s*(\S+).*$" replace = "\1" />
         </tokenfilter>
       </filterchain>
     </loadfile>
 
-    <!-- Read the content of the output file and extract "Description" -->
-    <loadfile property="desc" srcfile="${output.file}">
-      <filterchain>
-        <linecontains>
-          <contains value="Description:" />
-        </linecontains>
-        <tokenfilter>
-          <replaceregex pattern="^.*Description:\s*(\S+).*$" replace="\1"/>
-        </tokenfilter>
-      </filterchain>
-    </loadfile>
+    <propertyregex property="filename" input="${phpext.dll}" regexp=".*/([^/]*)$" select="\1"/>
 
-    <!-- Read the content of the output file and extract "Publisher" -->
-    <loadfile property="pub" srcfile="${output.file}">
-      <filterchain>
-        <linecontains>
-          <contains value="Publisher:" />
-        </linecontains>
-        <tokenfilter>
-          <replaceregex pattern="^.*Publisher:\s*(\S+).*$" replace="\1"/>
-        </tokenfilter>
-      </filterchain>
-    </loadfile>
-
-    <!-- Echo the "Publisher" -->
-    <echo message="Publisher: ${pub}" />
-    <!-- Echo the "Description" -->
-    <echo message="Description: ${desc}" />
     <!-- Echo the "MachineType" -->
-    <echo message="MachineType: ${arch}" />
+    <echo message = "MachineType: ${arch}" />
+    <echo message=".dll filename is: ${filename}"/>
 
-    <condition property="property.matches.64">
-      <matches string="${arch}" pattern="64-bit" />
+    <condition property = "property.matches.64">
+      <matches string = "${arch}" pattern = "64-bit" />
     </condition>
 
     <if>
-      <isset property="property.matches.64"/>
+      <not>
+        <isset property = "property.matches.64" />
+      </not>
       <then>
-        <echo message="Your property matches '64-bit'."/>
+        <echo message = "Your property does not match '64-bit'." />
+        <exec executable = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" failonerror = "true">
+          <arg value = "-NoLogo" />
+          <arg value = "-NoProfile" />
+          <arg value = "-Command" />
+          <arg value = "(New-Object -ComObject SAPI.SpVoice).Speak('OH NO!, the dll file ${filename}, is not built for x64, Halting build.')" />
+        </exec>
+        <fail message = " Architecture is not '64-bit'. Halting build." />
       </then>
-      <else>
-        <echo message="Your property does not match '64'."/>
-        <fail message="ATTENTION!!!!!!!!!!!!!!!!!!! ${arch} - Architecture is not '64-bit'. Halting build."/>
-      </else>
     </if>
-  </target>
 
+    <!-- Delete sigchecks temp file -->
+    <delete file="sigcheck_output.txt"/>
+
+  </target>
 </project>

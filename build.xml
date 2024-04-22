@@ -30,7 +30,6 @@
   <target name="executeSigcheck">
     <!-- Invoke the executeSigcheck target from sigcheck.xml -->
     <ant antfile="sigcheck.xml" target="executeSigcheck"/>
-    <!-- The values of ${desc}, ${arch}, and ${pub} will be printed by sigcheck.xml -->
   </target>
 
 

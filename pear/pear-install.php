@@ -42,7 +42,7 @@ foreach ($filesToScan as $fileToScan) {
     $tmpCountChangedOcc = 0;
     $fileContentOr = file_get_contents($fileToScan);
     $fileContent = $fileContentOr;
-    
+
     preg_match('#' . $unixFromPath . '#i', $fileContent, $unixMatches);
     if (!empty($unixMatches)) {
         $fileContent = str_replace($unixFromPath, $unixToPath, $fileContent, $countChanged);
@@ -55,7 +55,7 @@ foreach ($filesToScan as $fileToScan) {
         //echo 'Replace ' . $windowsFromPath . ' with ' . $windowsToPath . ' in ' . $fileToScan . PHP_EOL;
         $tmpCountChangedOcc += $countChanged;
     }
-    
+
     if ($fileContentOr != $fileContent) {
         $countChangedFiles++;
         $countChangedOcc += $tmpCountChangedOcc;
@@ -74,7 +74,7 @@ echo 'Cleaning...';
 Utils::removeFiles($pearPath . '/tmp');
 
 class Utils {
-    
+
     public static function getPearVersion($pearExe) {
         $output = shell_exec('CMD /C "' . $pearExe . '" -V 2>&1');
         if (empty($output)) {
@@ -86,53 +86,53 @@ class Utils {
         }
         foreach ($outputRows as $outputRow) {
             if (self::startWith($outputRow, 'PEAR Version')) {
-                return trim(str_replace('PEAR Version:', '', $outputRow));
+return trim(str_replace('PEAR Version:', '', $outputRow));
             }
         }
         return null;
     }
-    
+
     public static function getFilesToScan($path) {
         $result = array();
         foreach ($path as $pathToScan => $toFind) {
             $findFiles = self::findFiles($pathToScan, $toFind);
             foreach ($findFiles as $findFile) {
-                $result[] = $findFile;
+$result[] = $findFile;
             }
         }
         return $result;
     }
-    
+
     public static function findFiles($startPath, $findFiles = array('')) {
         $result = array();
-    
+
         $handle = @opendir($startPath);
         if (!$handle) {
             return $result;
         }
-        
+
         while ($file = readdir($handle)) {
             if ($file == '.' || $file == '..') {
-                continue;
+continue;
             }
             if (is_dir($startPath . '/' . $file)) {
-                $tmpResults = self::findFiles($startPath . '/' . $file, $findFiles);
-                foreach($tmpResults as $tmpResult) {
-                    $result[] = $tmpResult;
-                }
+$tmpResults = self::findFiles($startPath . '/' . $file, $findFiles);
+foreach($tmpResults as $tmpResult) {
+    $result[] = $tmpResult;
+}
             } elseif (is_file($startPath . '/' . $file)) {
-                foreach ($findFiles as $findFile) {
-                    if (self::endWith($file, $findFile) || $file == $findFile || empty($findFile)) {
-                        $result[] = self::formatUnixPath($startPath . '/' . $file);
-                    }
-                }
+foreach ($findFiles as $findFile) {
+    if (self::endWith($file, $findFile) || $file == $findFile || empty($findFile)) {
+        $result[] = self::formatUnixPath($startPath . '/' . $file);
+    }
+}
             }
         }
-        
+
         closedir($handle);
         return $result;
     }
-    
+
     public static function removeFiles($path, $startPath = '') {
         if (empty($startPath)) {
             $startPath = $path;
@@ -145,26 +145,26 @@ class Utils {
             rmdir($path);
         }
     }
-    
+
     public static function formatWindowsPath($path) {
         return str_replace('/', '\\', $path);
     }
-    
+
     public static function formatUnixPath($path) {
         return str_replace('\\', '/', $path);
     }
-    
+
     public static function startWith($string, $search) {
         $length = strlen($search);
         return (substr($string, 0, $length) === $search);
     }
-    
+
     public static function endWith($string, $search) {
         $length = strlen($search);
         $start  = $length * -1;
         return (substr($string, $start) === $search);
     }
-    
+
     public static function getMicrotime() {
         list($usec, $sec) = explode(" ", microtime());
         return ((float)$usec + (float)$sec);

@@ -1979,7 +1979,7 @@ include_path=".;~BEARSAMPP_LIN_PATH~/bin/php/php7.4.32/pear/pear"
 zend_extension = "xdebug"
 
 [xdebug]
-xdebug.mode = profile
+xdebug.mode = debug, develop, trace
 xdebug.start_with_request = trigger
 xdebug.output_name = cachegrind.out.%t.%p
 xdebug.output_dir = "~BEARSAMPP_LIN_PATH~/tmp/cachegrind"

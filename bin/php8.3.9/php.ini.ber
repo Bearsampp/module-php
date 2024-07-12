@@ -1947,9 +1947,8 @@ opcache.enable_cli=0
 ; List of headers files to preload, wildcard patterns allowed.
 ;ffi.preload=
 
-zend_extension = "xdebug"
-
 [xdebug]
+zend_extension = "xdebug"
 xdebug.mode = debug
 xdebug.start_with_request = trigger
 xdebug.output_name = cachegrind.out.%t.%p

@@ -1947,9 +1947,8 @@ opcache.enable_cli=0
 ; List of headers files to preload, wildcard patterns allowed.
 ;ffi.preload=
 
-zend_extension = "xdebug"
-
 [xdebug]
+zend_extension = "xdebug"
 xdebug.remote_enable = On
 xdebug.profiler_enable = Off
 xdebug.profiler_enable_trigger = Off

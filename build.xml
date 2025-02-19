@@ -168,7 +168,6 @@
           </filterset>
           <resources>
             <file file = "${bundle.path}/php.ini" />
-            <file file = "${bundle.path}/php.ini.ber" />
           </resources>
         </copy>
 
@@ -181,7 +180,6 @@
           </filterset>
           <resources>
             <file file = "${bundle.path}/php.ini" />
-            <file file = "${bundle.path}/php.ini.ber" />
           </resources>
         </copy>
       </else>

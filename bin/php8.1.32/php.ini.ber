@@ -328,7 +328,7 @@
 
   ; Colors for Syntax Highlighting mode.  Anything that's acceptable in
   ;
-<span style = "color: ???????">would work.
+<span style = "color: #FF0000">would work.
   ; http://php.net/syntax-highlighting
   ;highlight.string = #DD0000
   ;highlight.comment = #FF9900

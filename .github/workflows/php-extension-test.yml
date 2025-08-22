@@ -1,0 +1,137 @@
+name: PHP Extension Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  test-php:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ win10-amd, win10-intel, win11-amd, win11-intel ]
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get diff of releases.properties
+        run: |
+          git fetch origin main
+          git diff origin/main...HEAD -- releases.properties | `
+            Select-String '^+' | `
+            Where-Object { $_ -notmatch '^\+\+' } | `
+            ForEach-Object { $_.Line.TrimStart('+') } > new_versions.txt
+
+      - name: Loop through new PHP versions
+        run: |
+          $versions = Get-Content new_versions.txt
+          foreach ($version in $versions) {
+            Write-Host "Testing PHP $version on ${{ matrix.os }}"
+            # TODO: Insert your extension validation logic here
+          }
+
+      # Publish per-matrix result as an artifact for aggregation
+      - name: Publish result artifact
+        if: always()
+        run: |
+          $status = "${{ job.status }}"
+          if ($status -eq "success") { "pass" | Out-File result.txt -Encoding utf8 } else { "fail" | Out-File result.txt -Encoding utf8 }
+          "${{ matrix.os }}" | Out-File os.txt -Encoding utf8
+        shell: pwsh
+
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-${{ matrix.os }}
+          path: |
+            result.txt
+            os.txt
+
+  aggregate:
+    name: Aggregate results and comment
+    needs: test-php
+    runs-on: windows-latest
+    if: always()
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Download result artifacts (win10-amd)
+        uses: actions/download-artifact@v4
+        with:
+          name: result-win10-amd
+          path: results/win10-amd
+
+      - name: Download result artifacts (win10-intel)
+        uses: actions/download-artifact@v4
+        with:
+          name: result-win10-intel
+          path: results/win10-intel
+
+      - name: Download result artifacts (win11-amd)
+        uses: actions/download-artifact@v4
+        with:
+          name: result-win11-amd
+          path: results/win11-amd
+
+      - name: Download result artifacts (win11-intel)
+        uses: actions/download-artifact@v4
+        with:
+          name: result-win11-intel
+          path: results/win11-intel
+
+      - name: Build combined comment
+        id: build
+        run: |
+          function Get-Result {
+            param([string]$Path)
+            if (Test-Path "$Path/result.txt") { (Get-Content "$Path/result.txt").Trim() } else { "missing" }
+          }
+
+          $items = @(
+            @{ os = 'win10-amd';    path = 'results/win10-amd' },
+            @{ os = 'win10-intel';  path = 'results/win10-intel' },
+            @{ os = 'win11-amd';    path = 'results/win11-amd' },
+            @{ os = 'win11-intel';  path = 'results/win11-intel' }
+          )
+
+          $anyFail = $false
+          $lines = @()
+          foreach ($it in $items) {
+            $res = Get-Result -Path $it.path
+            $status = if ($res -eq 'pass') { 'passed' } else { 'failed' }
+            if ($status -eq 'failed') { $anyFail = $true }
+
+            # Build a valid shields badge per OS
+            $label = [uri]::EscapeDataString('PHP Test')
+            $msg   = [uri]::EscapeDataString($it.os + ' ' + $status)
+            $color = if ($status -eq 'passed') { 'brightgreen' } else { 'red' }
+            $badge = "https://img.shields.io/static/v1?label=$label&message=$msg&color=$color&logo=windows&logoColor=white"
+            $lines += "- $($it.os): ![]($badge)"
+          }
+
+          $header = if (-not $anyFail) { '✅ All PHP extension tests passed' } else { '❌ Some PHP extension tests failed' }
+
+          $content = @()
+          $content += "### $header"
+          $content += ""
+          $content += $lines
+          $contentText = $content -join "`n"
+
+          # Save for comment
+          $contentText | Out-File aggregate.md -Encoding utf8
+        shell: pwsh
+
+      - name: Post single PR comment
+        if: always()
+        run: |
+          gh pr comment -R "${{ github.repository }}" ${{ github.event.pull_request.number }} --body "$(Get-Content -Raw aggregate.md)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh

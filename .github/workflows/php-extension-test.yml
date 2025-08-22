@@ -51,19 +51,3 @@ jobs:
               if: failure()
               run: |
                   gh pr comment ${{ github.event.pull_request.number }} --body "❌ PHP extension test failed on `${{ matrix.os }}`. Please check logs."
-
-            - name: Send email alert on failure
-              if: failure()
-              uses: dawidd6/action-send-mail@v3
-              with:
-                  server_address: ${{ secrets.SMTP_SERVER }}
-                  server_port: ${{ secrets.SMTP_PORT }}
-                  username: ${{ secrets.SMTP_USER }}
-                  password: ${{ secrets.SMTP_PASS }}
-                  subject: "PHP Extension Test Failed on ${{ matrix.os }}"
-                  to: "admin@bearsampp.com"
-                  from: "admin@bearsampp.com"
-                  body: |
-                      The PHP extension test failed for `${{ matrix.os }}`.
-                      Please review the logs in the GitHub Action run:
-                      https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

@@ -12,6 +12,9 @@ jobs:
             matrix:
                 os: [win10-amd, win10-intel, win11-amd, win11-intel]
 
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
+
         steps:
             - name: Checkout PR branch
               uses: actions/checkout@v3

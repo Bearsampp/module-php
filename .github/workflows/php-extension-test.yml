@@ -1,53 +1,54 @@
 name: PHP Extension Validation
 
 on:
-    pull_request:
-        branches: [main]
-        types: [opened, synchronize, reopened]
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
 
 jobs:
-    test-php:
-        runs-on: windows-latest
-        strategy:
-            matrix:
-                os: [win10-amd, win10-intel, win11-amd, win11-intel]
+  test-php:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [ win10-amd, win10-intel, win11-amd, win11-intel ]
 
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get diff of releases.properties
+        run: |
+          git fetch origin main
+          git diff origin/main...HEAD -- releases.properties | `
+            Select-String '^+' | `
+            Where-Object { $_ -notmatch '^\+\+' } | `
+            ForEach-Object { $_.Line.TrimStart('+') } > new_versions.txt
+
+      - name: Loop through new PHP versions
+        run: |
+          $versions = Get-Content new_versions.txt
+          foreach ($version in $versions) {
+            Write-Host "Testing PHP $version on ${{ matrix.os }}"
+            # Insert your extension validation logic here
+          }
+
+      - name: Generate badge
+        if: success()
+        run: |
+          echo "![PHP Test Passed](https://img.shields.io/badge/PHP%20Test-${{ matrix.os }}-green)" >> badge.md
+
+      - name: Comment on PR (success)
+        if: success()
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "✅ PHP extension test passed on `${{ matrix.os }}`. See badge below:\n\n$(cat badge.md)"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-        steps:
-            - name: Checkout PR branch
-              uses: actions/checkout@v3
-              with:
-                  fetch-depth: 0
-
-            - name: Get diff of releases.properties
-              run: |
-                  git fetch origin main
-                  git diff origin/main...HEAD -- releases.properties | `
-                    Select-String '^+' | `
-                    Where-Object { $_ -notmatch '^\+\+' } | `
-                    ForEach-Object { $_.Line.TrimStart('+') } > new_versions.txt
-
-            - name: Loop through new PHP versions
-              run: |
-                  $versions = Get-Content new_versions.txt
-                  foreach ($version in $versions) {
-                    Write-Host "Testing PHP $version on ${{ matrix.os }}"
-                    # Insert your extension validation logic here
-                  }
-
-            - name: Generate badge
-              if: success()
-              run: |
-                  echo "![PHP Test Passed](https://img.shields.io/badge/PHP%20Test-${{ matrix.os }}-green)" >> badge.md
-
-            - name: Comment on PR (success)
-              if: success()
-              run: |
-                  gh pr comment ${{ github.event.pull_request.number }} --body "✅ PHP extension test passed on `${{ matrix.os }}`. See badge below:\n\n$(cat badge.md)"
-
-            - name: Comment on PR (failure)
-              if: failure()
-              run: |
-                  gh pr comment ${{ github.event.pull_request.number }} --body "❌ PHP extension test failed on `${{ matrix.os }}`. Please check logs."
+      - name: Comment on PR (failure)
+        if: failure()
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "❌ PHP extension test failed on `${{ matrix.os }}`. Please check logs."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

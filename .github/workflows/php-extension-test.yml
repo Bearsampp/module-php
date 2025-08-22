@@ -59,6 +59,9 @@ jobs:
     runs-on: windows-latest
     if: always()
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
       - name: Download result artifacts (win10-amd)
         uses: actions/download-artifact@v4
         with:
@@ -128,7 +131,7 @@ jobs:
       - name: Post single PR comment
         if: always()
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "$(Get-Content -Raw aggregate.md)"
+          gh pr comment -R "${{ github.repository }}" ${{ github.event.pull_request.number }} --body "$(Get-Content -Raw aggregate.md)"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh

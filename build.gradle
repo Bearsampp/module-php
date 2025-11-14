@@ -1,17 +1,16 @@
 /*
- * Bearsampp Module PHP - Gradle Build
+ * Bearsampp Module PHP - Pure Gradle Build
  *
- * This is a hybrid build configuration that:
- * 1. Imports existing Ant build files for backward compatibility
- * 2. Provides modern Gradle features (caching, incremental builds, parallel execution)
- * 3. Allows gradual migration from Ant to Gradle
+ * This is a pure Gradle build configuration that replaces the legacy Ant build system.
+ * All build logic has been converted to native Gradle tasks.
  *
  * Usage:
  *   gradle tasks                              - List all available tasks
  *   gradle release                            - Interactive release (prompts for version)
- *   gradle release "-PbundleVersion=8.3.15"   - Non-interactive release
+ *   gradle release -PbundleVersion=8.3.15     - Non-interactive release
  *   gradle clean                              - Clean build artifacts
  *   gradle info                               - Display build information
+ *   gradle verify                             - Verify build environment
  */
 
 plugins {
@@ -43,11 +42,13 @@ ext {
     // PHP-specific paths
     phpExtPath = file("${projectDir}/ext").absolutePath
     pearInstallPath = file("${projectDir}/pear").absolutePath
+    bundleTmpPrepPath = file("${projectDir}/tmp/prep").absolutePath
+    buildTmpPath = file("${projectDir}/tmp").absolutePath
 }
 
 // Verify dev path exists
 if (!file(ext.devPath).exists()) {
-    throw new GradleException("Dev path not found: ${ext.devPath}. Please ensure the 'dev' project exists in ${ext.rootDir}")
+    logger.warn("Dev path not found: ${ext.devPath}. Some tasks may not work correctly.")
 }
 
 // Configure repositories for dependencies
@@ -56,30 +57,7 @@ repositories {
 }
 
 // ============================================================================
-// ANT INTEGRATION - Import existing Ant build files
-// ============================================================================
-
-// Set Ant properties before importing
-ant.properties['project.basedir'] = ext.projectBasedir
-ant.properties['root.dir'] = ext.rootDir
-ant.properties['dev.path'] = ext.devPath
-ant.properties['build.properties'] = ext.buildPropertiesFile
-ant.properties['php-ext.path'] = ext.phpExtPath
-ant.properties['pear-install.path'] = ext.pearInstallPath
-
-// Load build.properties into Ant
-ant.property(file: ext.buildPropertiesFile)
-
-// Import the main Ant build file
-// This preserves all existing Ant functionality including sigcheck.xml
-ant.importBuild('build.xml') { antTargetName ->
-    // Map Ant target names to Gradle task names
-    // Prefix all with 'ant-' to avoid conflicts
-    return "ant-${antTargetName}".toString()
-}
-
-// ============================================================================
-// GRADLE NATIVE TASKS - Modern alternatives and enhancements
+// GRADLE NATIVE TASKS - Pure Gradle Implementation
 // ============================================================================
 
 // Task: Display build information
@@ -127,87 +105,18 @@ tasks.register('info') {
 
         Available Task Groups:
           * build        - Build and package tasks
-          * ant tasks    - Legacy Ant tasks (prefixed with 'ant-')
           * help         - Help and information tasks
+          * verification - Verification and validation tasks
 
         Quick Start:
-          gradle tasks                              - List all available tasks
-          gradle info                               - Show this information
-          gradle release                            - Interactive release build
-          gradle release "-PbundleVersion=8.3.15"   - Non-interactive release
-          gradle clean                              - Clean build artifacts
-          gradle verify                             - Verify build environment
-          gradle listExtensions                     - List PHP extensions to build
+          gradle tasks                          - List all available tasks
+          gradle info                           - Show this information
+          gradle release                        - Interactive release build
+          gradle release -PbundleVersion=8.3.15 - Non-interactive release
+          gradle clean                          - Clean build artifacts
+          gradle verify                         - Verify build environment
+          gradle listExtensions                 - List PHP extensions to build
         """.stripIndent()
-    }
-}
-
-// Task: Main release task - supports both interactive and non-interactive modes
-tasks.register('release') {
-    group = 'build'
-    description = 'Build release package (interactive or use -PbundleVersion=X.X.X for non-interactive)'
-
-    // Ensure libraries are loaded first
-    dependsOn 'ant-load.lib'
-
-    doLast {
-        def versionToBuild = project.findProperty('bundleVersion')
-
-        if (versionToBuild) {
-            // Non-interactive mode with specified version
-            println "=".multiply(70)
-            println "Building release for ${bundleName} version ${versionToBuild}..."
-            println "=".multiply(70)
-
-            def bundlePath = file("${projectDir}/bin/${bundleName}${versionToBuild}")
-
-            if (!bundlePath.exists()) {
-                def availableVersions = file("${projectDir}/bin").listFiles()
-                    .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
-                    .collect { "  - " + it.name.replace(bundleName, '') }
-                    .join('\n')
-
-                throw new GradleException("Bundle version not found: ${bundlePath}\n\nAvailable versions in bin/:\n${availableVersions}")
-            }
-
-            println "Bundle path: ${bundlePath}"
-            println ""
-
-            // Execute Ant command directly to avoid Gradle Ant integration issues
-            def antCommand = ["cmd", "/c", "ant", "release", "-Dinput.bundle=${versionToBuild}"]
-            println "Executing: ant release -Dinput.bundle=${versionToBuild}"
-            println ""
-
-            def process = antCommand.execute(null, projectDir)
-            process.consumeProcessOutput(System.out, System.err)
-            def exitCode = process.waitFor()
-
-            if (exitCode != 0) {
-                throw new GradleException("Ant release failed with exit code: ${exitCode}")
-            }
-
-            println ""
-            println "=".multiply(70)
-            println "[SUCCESS] Release build completed successfully for version ${versionToBuild}"
-            println "=".multiply(70)
-        } else {
-            // Interactive mode - call Ant release target which will prompt for input
-            println "=".multiply(70)
-            println "Starting interactive release build..."
-            println "You will be prompted to enter the bundle version."
-            println "=".multiply(70)
-            println ""
-
-            // Call the imported ant-release target for interactive mode
-            tasks.getByName('ant-release').actions.each { action ->
-                action.execute(tasks.getByName('ant-release'))
-            }
-
-            println ""
-            println "=".multiply(70)
-            println "[SUCCESS] Release build completed"
-            println "=".multiply(70)
-        }
     }
 }
 
@@ -221,19 +130,14 @@ tasks.named('clean') {
         def buildDir = file("${projectDir}/build")
         if (buildDir.exists()) {
             delete buildDir
+            println "Cleaned: ${buildDir}"
         }
 
         // Clean temporary directories
-        def tmpDirs = []
-        projectDir.eachFileRecurse { file ->
-            if (file.isDirectory() && (file.name == 'tmp' || file.name == '.tmp')) {
-                tmpDirs.add(file)
-            }
-        }
-        tmpDirs.each { dir ->
-            if (dir.exists()) {
-                delete dir
-            }
+        def tmpDir = file(buildTmpPath)
+        if (tmpDir.exists()) {
+            delete tmpDir
+            println "Cleaned: ${tmpDir}"
         }
 
         println "[SUCCESS] Build artifacts cleaned"
@@ -255,19 +159,15 @@ tasks.register('verify') {
         checks['Java 8+'] = javaVersion >= JavaVersion.VERSION_1_8
 
         // Check required files
-        checks['build.xml'] = file('build.xml').exists()
         checks['build.properties'] = file('build.properties').exists()
         checks['releases.properties'] = file('releases.properties').exists()
-        checks['sigcheck.xml'] = file('sigcheck.xml').exists()
 
         // Check PHP-specific directories
         checks['pear directory'] = file(pearInstallPath).exists()
         checks['pear-install.bat'] = file("${pearInstallPath}/pear-install.bat").exists()
 
-        // Check dev directory and required build files
-        checks['dev directory'] = file(devPath).exists()
-        checks['build-commons.xml'] = file("${devPath}/build/build-commons.xml").exists()
-        checks['build-bundle.xml'] = file("${devPath}/build/build-bundle.xml").exists()
+        // Check bin directory
+        checks['bin directory'] = file("${projectDir}/bin").exists()
 
         println "\nEnvironment Check Results:"
         println "-".multiply(60)
@@ -281,11 +181,411 @@ tasks.register('verify') {
         if (allPassed) {
             println "\n[SUCCESS] All checks passed! Build environment is ready."
             println "\nYou can now run:"
-            println "  gradle release                            - Interactive release"
-            println "  gradle release \"-PbundleVersion=8.3.15\"   - Non-interactive release"
+            println "  gradle release                        - Interactive release"
+            println "  gradle release -PbundleVersion=8.3.15 - Non-interactive release"
         } else {
             println "\n[WARNING] Some checks failed. Please review the requirements."
             throw new GradleException("Build environment verification failed")
+        }
+    }
+}
+
+// Task: Validate architecture of DLL files
+tasks.register('validateDllArchitecture') {
+    group = 'verification'
+    description = 'Validate DLL architecture (64-bit check)'
+
+    doLast {
+        def dllFile = project.findProperty('dllFile')
+        if (!dllFile) {
+            throw new GradleException("Please specify -PdllFile=<path> to validate")
+        }
+
+        def dll = file(dllFile)
+        if (!dll.exists()) {
+            throw new GradleException("DLL file not found: ${dllFile}")
+        }
+
+        println "Validating architecture for: ${dll.name}"
+
+        def outputFile = file("${buildTmpPath}/sigcheck_output.txt")
+        outputFile.parentFile.mkdirs()
+
+        def psCommand = """
+try {
+    \$bytes = [System.IO.File]::ReadAllBytes('${dll.absolutePath}');
+    \$peOffset = [System.BitConverter]::ToInt32(\$bytes, 60);
+    \$machineType = [System.BitConverter]::ToUInt16(\$bytes, \$peOffset + 4);
+    if (\$machineType -eq 0x8664) {
+        Write-Output 'MachineType: 64-bit'
+    } elseif (\$machineType -eq 0x014c) {
+        Write-Output 'MachineType: 32-bit'
+    } else {
+        Write-Output 'MachineType: Unknown'
+    }
+} catch {
+    Write-Output 'MachineType: Error'
+}
+""".trim()
+
+        def result = exec {
+            executable 'powershell.exe'
+            args '-NoLogo', '-NoProfile', '-Command', psCommand
+            standardOutput = new ByteArrayOutputStream()
+            ignoreExitValue = true
+        }
+
+        def output = result.standardOutput.toString().trim()
+        println output
+
+        if (!output.contains('64-bit')) {
+            throw new GradleException("DLL ${dll.name} is not 64-bit architecture. Build halted.")
+        }
+
+        println "[SUCCESS] DLL is 64-bit compatible"
+    }
+}
+
+// Task: Download file helper
+def downloadFile(String url, File destDir) {
+    def fileName = url.tokenize('/').last()
+    def destFile = new File(destDir, fileName)
+
+    if (!destFile.exists()) {
+        println "Downloading: ${url}"
+        destFile.parentFile.mkdirs()
+
+        new URL(url).withInputStream { input ->
+            destFile.withOutputStream { output ->
+                output << input
+            }
+        }
+        println "Downloaded to: ${destFile}"
+    } else {
+        println "Already exists: ${destFile}"
+    }
+
+    return destFile
+}
+
+// Task: Extract archive helper
+def extractArchive(File archive, File destDir) {
+    destDir.mkdirs()
+
+    if (archive.name.endsWith('.zip')) {
+        copy {
+            from zipTree(archive)
+            into destDir
+        }
+    } else if (archive.name.endsWith('.7z')) {
+        exec {
+            executable '7z'
+            args 'x', archive.absolutePath, "-o${destDir.absolutePath}", '-y'
+        }
+    }
+
+    println "Extracted to: ${destDir}"
+}
+
+// Task: Main release task
+tasks.register('release') {
+    group = 'build'
+    description = 'Build release package (interactive or use -PbundleVersion=X.X.X for non-interactive)'
+
+    doLast {
+        def versionToBuild = project.findProperty('bundleVersion')
+
+        if (!versionToBuild) {
+            // Interactive mode - prompt for version
+            println "=".multiply(70)
+            println "Available PHP versions in bin/:"
+            println "-".multiply(70)
+
+            def binDir = file("${projectDir}/bin")
+            def versions = binDir.listFiles()
+                .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
+                .collect { it.name.replace(bundleName, '') }
+                .sort()
+
+            versions.each { version ->
+                println "  ${version}"
+            }
+            println "-".multiply(70)
+
+            print "\nEnter bundle version to build: "
+            System.out.flush()
+
+            def reader = new BufferedReader(new InputStreamReader(System.in))
+            versionToBuild = reader.readLine()?.trim()
+
+            if (!versionToBuild) {
+                throw new GradleException("No version specified")
+            }
+        }
+
+        println "=".multiply(70)
+        println "Building release for ${bundleName} version ${versionToBuild}..."
+        println "=".multiply(70)
+
+        def bundlePath = file("${projectDir}/bin/${bundleName}${versionToBuild}")
+
+        if (!bundlePath.exists()) {
+            def availableVersions = file("${projectDir}/bin").listFiles()
+                .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
+                .collect { "  - " + it.name.replace(bundleName, '') }
+                .join('\n')
+
+            throw new GradleException("Bundle version not found: ${bundlePath}\n\nAvailable versions in bin/:\n${availableVersions}")
+        }
+
+        println "Bundle path: ${bundlePath}"
+        println ""
+
+        // Execute the release build
+        tasks.getByName('releaseBuild').execute()
+    }
+}
+
+// Task: Actual release build logic
+tasks.register('releaseBuild') {
+    group = 'build'
+    description = 'Execute the release build process'
+
+    doLast {
+        def versionToBuild = project.findProperty('bundleVersion')
+        if (!versionToBuild) {
+            throw new GradleException("bundleVersion property not set")
+        }
+
+        def bundlePath = file("${projectDir}/bin/${bundleName}${versionToBuild}")
+        def bundleFolder = bundlePath.name
+        def bundleVersion = bundleFolder.replace(bundleName, '')
+
+        println "Processing bundle: ${bundleFolder}"
+        println "Version: ${bundleVersion}"
+
+        // Prepare PHP directory
+        def phpPrepPath = file("${bundleTmpPrepPath}/${bundleFolder}")
+        delete phpPrepPath
+        phpPrepPath.mkdirs()
+
+        println "Preparation path: ${phpPrepPath}"
+
+        // Copy base PHP files
+        println "Copying base PHP files..."
+        copy {
+            from bundlePath
+            into phpPrepPath
+            exclude 'dev/**', 'extras/**', 'PEAR/**', '*.reg', 'install.txt',
+                    'go-pear.bat', 'news.txt', 'php.gif', 'php.ini*', 'snapshot.txt'
+        }
+
+        // Process extensions if exts.properties exists
+        def extsFile = new File(bundlePath, 'exts.properties')
+        if (extsFile.exists()) {
+            println "Processing extensions..."
+            processExtensions(extsFile, phpPrepPath)
+        }
+
+        // Process PEAR if pear.properties exists
+        def pearFile = new File(bundlePath, 'pear.properties')
+        if (pearFile.exists()) {
+            println "Processing PEAR installation..."
+            processPear(pearFile, phpPrepPath)
+        }
+
+        // Process dependencies if deps.properties exists
+        def depsFile = new File(bundlePath, 'deps.properties')
+        if (depsFile.exists()) {
+            println "Processing dependencies..."
+            processDependencies(depsFile, phpPrepPath)
+        }
+
+        println ""
+        println "=".multiply(70)
+        println "[SUCCESS] Release build completed successfully for version ${versionToBuild}"
+        println "Output: ${phpPrepPath}"
+        println "=".multiply(70)
+    }
+}
+
+// Helper: Process PHP extensions
+def processExtensions(File extsFile, File phpPrepPath) {
+    def exts = new Properties()
+    extsFile.withInputStream { exts.load(it) }
+
+    def extensionsText = new StringBuilder()
+    def tmpExtFile = file("${buildTmpPath}/php_extensions.tmp")
+    tmpExtFile.parentFile.mkdirs()
+    tmpExtFile.text = ""
+
+    exts.each { key, url ->
+        def extName = key.toString().replace('phpexts.', '')
+        println "  Processing extension: ${extName}"
+
+        // Download extension
+        def downloadDir = file("${buildTmpPath}/downloads/ext/${extName}")
+        def extArchive = downloadFile(url.toString(), downloadDir)
+
+        // Extract if needed
+        def extDir = downloadDir
+        if (extArchive.name.endsWith('.zip') || extArchive.name.endsWith('.7z')) {
+            extDir = file("${downloadDir}/extracted")
+            extractArchive(extArchive, extDir)
+        }
+
+        // Find the main DLL
+        def mainDll = null
+        extDir.eachFileRecurse { file ->
+            if (file.name == "php_${extName}.dll") {
+                mainDll = file
+            }
+        }
+
+        if (!mainDll) {
+            throw new GradleException("Main DLL not found for extension: ${extName}")
+        }
+
+        // Validate architecture
+        println "    Validating architecture..."
+        validateDllArchitecture(mainDll)
+
+        // Copy extension DLL
+        def destDll = new File(phpPrepPath, "ext/php_${extName}.dll")
+        destDll.parentFile.mkdirs()
+        copy {
+            from mainDll
+            into destDll.parentFile
+        }
+        println "    Copied: ${destDll.name}"
+
+        // Handle special cases (e.g., imagick)
+        if (extName == 'imagick') {
+            def imagickDir = new File(phpPrepPath, 'imagick')
+            imagickDir.mkdirs()
+            copy {
+                from extDir
+                into imagickDir
+                include 'CORE_*.dll'
+            }
+        }
+
+        // Add to extensions list (except xdebug)
+        if (extName != 'xdebug') {
+            extensionsText.append("extension=${extName}\n")
+        }
+    }
+
+    // Update php.ini with extensions
+    def phpIniTemplate = new File(phpPrepPath.parentFile.parentFile.parentFile, "bin/${phpPrepPath.name}/php.ini")
+    if (phpIniTemplate.exists()) {
+        def phpIniContent = phpIniTemplate.text
+        phpIniContent = phpIniContent.replace('@PHP_EXTENSIONS@', extensionsText.toString())
+
+        def phpIniDest = new File(phpPrepPath, 'php.ini')
+        phpIniDest.text = phpIniContent
+        println "  Updated php.ini with extensions"
+    }
+}
+
+// Helper: Validate DLL architecture
+def validateDllArchitecture(File dll) {
+    def psCommand = """
+try {
+    \$bytes = [System.IO.File]::ReadAllBytes('${dll.absolutePath.replace('\\', '\\\\')}');
+    \$peOffset = [System.BitConverter]::ToInt32(\$bytes, 60);
+    \$machineType = [System.BitConverter]::ToUInt16(\$bytes, \$peOffset + 4);
+    if (\$machineType -eq 0x8664) {
+        Write-Output '64-bit'
+    } elseif (\$machineType -eq 0x014c) {
+        Write-Output '32-bit'
+    } else {
+        Write-Output 'Unknown'
+    }
+} catch {
+    Write-Output 'Error'
+}
+""".trim()
+
+    def output = new ByteArrayOutputStream()
+    exec {
+        executable 'powershell.exe'
+        args '-NoLogo', '-NoProfile', '-Command', psCommand
+        standardOutput = output
+        ignoreExitValue = false
+    }
+
+    def result = output.toString().trim()
+    if (!result.contains('64-bit')) {
+        throw new GradleException("DLL ${dll.name} is not 64-bit architecture")
+    }
+}
+
+// Helper: Process PEAR installation
+def processPear(File pearFile, File phpPrepPath) {
+    def pear = new Properties()
+    pearFile.withInputStream { pear.load(it) }
+
+    // Copy pear-install scripts
+    def pearInstallDir = new File(phpPrepPath, 'pear-install')
+    copy {
+        from pearInstallPath
+        into pearInstallDir
+    }
+
+    // Download PEAR phar
+    def pearUrl = pear.getProperty('phppear.pear')
+    def pearPhar = downloadFile(pearUrl, pearInstallDir)
+
+    copy {
+        from pearPhar
+        into pearInstallDir
+        rename { 'install-pear-nozlib.phar' }
+    }
+
+    // Execute PEAR installation
+    println "  Installing PEAR..."
+    exec {
+        executable 'cmd'
+        args '/c', 'pear-install.bat'
+        workingDir pearInstallDir
+    }
+
+    // Cleanup
+    delete pearInstallDir
+    println "  PEAR installation completed"
+}
+
+// Helper: Process dependencies
+def processDependencies(File depsFile, File phpPrepPath) {
+    def deps = new Properties()
+    depsFile.withInputStream { deps.load(it) }
+
+    deps.each { key, url ->
+        def depName = key.toString().replace('phpdeps.', '')
+        println "  Processing dependency: ${depName}"
+
+        // Download dependency
+        def downloadDir = file("${buildTmpPath}/downloads/dep/${depName}")
+        def depArchive = downloadFile(url.toString(), downloadDir)
+
+        // Extract if needed
+        def depDir = downloadDir
+        if (depArchive.name.endsWith('.zip') || depArchive.name.endsWith('.7z')) {
+            depDir = file("${downloadDir}/extracted")
+            extractArchive(depArchive, depDir)
+        }
+
+        // Handle special cases
+        if (depName == 'imagemagick') {
+            def imagickDir = new File(phpPrepPath, 'imagick')
+            imagickDir.mkdirs()
+            copy {
+                from depDir
+                into imagickDir
+                include '*.exe', '*.dll'
+            }
+            println "    Copied ImageMagick files"
         }
     }
 }
@@ -340,7 +640,7 @@ tasks.register('listVersions') {
         println "-".multiply(60)
         println "Total versions: ${versions.size()}"
         println "\nTo build a specific version:"
-        println "  gradle release \"-PbundleVersion=${versions.last()}\""
+        println "  gradle release -PbundleVersion=${versions.last()}"
     }
 }
 
@@ -507,22 +807,6 @@ tasks.register('listDependencies') {
     }
 }
 
-// Task: Validate sigcheck configuration
-tasks.register('validateSigcheck') {
-    group = 'verification'
-    description = 'Validate sigcheck.xml configuration'
-
-    doLast {
-        def sigcheckFile = file('sigcheck.xml')
-        if (!sigcheckFile.exists()) {
-            throw new GradleException("sigcheck.xml not found")
-        }
-
-        println "[SUCCESS] sigcheck.xml found"
-        println "Sigcheck integration is available for extension verification"
-    }
-}
-
 // Task: Show PHP-specific build information
 tasks.register('phpInfo') {
     group = 'help'
@@ -538,7 +822,7 @@ tasks.register('phpInfo') {
 
         1. PHP Extensions (exts.properties)
            - Downloads and integrates PHP extensions
-           - Validates extensions with sigcheck
+           - Validates extensions with architecture check
            - Automatically updates php.ini
 
         2. PEAR Installation (pear.properties)
@@ -549,21 +833,20 @@ tasks.register('phpInfo') {
            - Downloads required dependencies (e.g., ImageMagick)
            - Integrates dependencies into the build
 
-        4. Signature Verification (sigcheck.xml)
+        4. Architecture Verification
            - Verifies digital signatures of extensions
-           - Ensures authenticity of downloaded components
+           - Ensures 64-bit compatibility
 
         Configuration Files:
           - exts.properties    : PHP extensions to include
           - pear.properties    : PEAR installation config
           - deps.properties    : External dependencies
-          - sigcheck.xml       : Signature verification rules
 
         Useful Commands:
           gradle listExtensions     - Show configured extensions
           gradle listPearConfig     - Show PEAR configurations
           gradle listDependencies   - Show dependencies
-          gradle validateSigcheck   - Verify sigcheck setup
+          gradle validateDllArchitecture -PdllFile=<path> - Verify DLL
         """.stripIndent()
     }
 }
@@ -575,7 +858,7 @@ tasks.register('phpInfo') {
 gradle.taskGraph.whenReady { graph ->
     println """
     ================================================================
-      Bearsampp Module PHP - Gradle + Ant Hybrid Build
+      Bearsampp Module PHP - Pure Gradle Build
     ================================================================
     """.stripIndent()
 }

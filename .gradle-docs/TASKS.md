@@ -19,15 +19,18 @@ Complete reference for all available Gradle tasks in the Bearsampp Module PHP pr
 ### `release`
 
 **Group:** build  
-**Description:** Build release package (interactive or use -PbundleVersion=X.X.X for non-interactive)
+**Description:** Build release package. Interactive by default; non-interactive when `-PbundleVersion=*` (latest) or a concrete version is provided.
 
 **Usage:**
 ```bash
-# Interactive mode (prompts for version)
+# Interactive mode (default — prompts for version)
 gradle release
 
-# Non-interactive mode (specify version)
-gradle release -PbundleVersion=8.3.15
+# Non-interactive (build latest found in bin/)
+gradle release -PbundleVersion=*
+
+# Non-interactive (build specific version)
+gradle release -PbundleVersion=8.4.14
 ```
 
 **Parameters:**
@@ -43,9 +46,12 @@ gradle release -PbundleVersion=8.3.15
 4. Processes extensions (if configured)
 5. Processes PEAR (if configured)
 6. Processes dependencies (if configured)
-7. Outputs prepared bundle
+7. Outputs prepared bundle under `tmp/prep/php{version}/`
+8. Packages the prepared folder into an archive in `build/distributions/` ensuring the top-level folder inside the archive is `{bundle.release}/` containing `bin/` and `bin/archived/`
 
-**Output Location:** `tmp/prep/php{version}/`
+**Output Locations:**
+- Prepared folder: `tmp/prep/php{version}/`
+- Final archive: `build/distributions/bearsampp-php-{version}-{bundle.release}.{7z|zip}`
 
 ---
 
@@ -66,6 +72,50 @@ gradle releaseBuild -PbundleVersion=8.3.15
 | `bundleVersion`   | String   | Yes      | PHP version to build           | `8.3.15`     |
 
 **Note:** This task is typically called by the `release` task. Use `release` instead for normal builds.
+
+---
+
+### `packageRelease`
+
+**Group:** build  
+**Description:** Package release into archive (7z or zip) including the version folder at the root of the archive
+
+**Usage:**
+```bash
+gradle packageRelease -PbundleVersion=8.3.15
+```
+
+**Notes:**
+- Chooses archiver based on `bundle.format` in `build.properties` (`7z` or `zip`).
+- Archive content layout mirrors module-bruno:
+  - Root folder: `{bundle.release}/` (e.g., `2025.10.31/`)
+  - Inside root: `bin/php{version}/` and `bin/archived/`
+  - Optional: `releases.properties` at the same level as `bin/`
+- Output: `build/distributions/bearsampp-php-{version}-{bundle.release}.{7z|zip}`
+
+---
+
+### `packageRelease7z`
+
+**Group:** build  
+**Description:** Package release into a `.7z` archive (requires 7-Zip in PATH). Ensures the top-level folder inside the archive is `{bundle.release}/` containing `bin/` and `bin/archived/`.
+
+**Usage:**
+```bash
+gradle packageRelease7z -PbundleVersion=8.3.15
+```
+
+---
+
+### `packageReleaseZip`
+
+**Group:** build  
+**Description:** Package release into a `.zip` archive using Gradle's native Zip task. Ensures the top-level folder inside the archive is `{bundle.release}/` containing `bin/` and `bin/archived/`.
+
+**Usage:**
+```bash
+gradle packageReleaseZip -PbundleVersion=8.3.15
+```
 
 ---
 

@@ -176,12 +176,12 @@ gradle clean
 
 ### Main Documentation
 
-- **Build Documentation**: [.gradle-docs/README.md](.gradle-docs/README.md)
-- **Task Reference**: [.gradle-docs/TASKS.md](.gradle-docs/TASKS.md)
-- **Configuration Guide**: [.gradle-docs/CONFIGURATION.md](.gradle-docs/CONFIGURATION.md)
-- **API Reference**: [.gradle-docs/API.md](.gradle-docs/API.md)
-- **Migration Guide**: [.gradle-docs/MIGRATION.md](.gradle-docs/MIGRATION.md)
-- **Documentation Index**: [.gradle-docs/INDEX.md](.gradle-docs/INDEX.md)
+- **Build Documentation**: [.gradle-docs/README.md](README.md)
+- **Task Reference**: [.gradle-docs/TASKS.md](TASKS.md)
+- **Configuration Guide**: [.gradle-docs/CONFIGURATION.md](CONFIGURATION.md)
+- **API Reference**: [.gradle-docs/API.md](API.md)
+- **Migration Guide**: [.gradle-docs/MIGRATION.md](MIGRATION.md)
+- **Documentation Index**: [.gradle-docs/INDEX.md](INDEX.md)
 
 ### Quick Links
 
@@ -307,7 +307,7 @@ module-php/
 
 ### For Developers
 
-1. ✅ Read [.gradle-docs/README.md](.gradle-docs/README.md)
+1. ✅ Read [.gradle-docs/README.md](README.md)
 2. ✅ Run `gradle verify` to check environment
 3. ✅ Run `gradle tasks` to see available tasks
 4. ✅ Try `gradle release -PbundleVersion=8.4.14`
@@ -334,7 +334,7 @@ For questions or issues:
 
 - **GitHub Issues**: https://github.com/bearsampp/module-php/issues
 - **Bearsampp Issues**: https://github.com/bearsampp/bearsampp/issues
-- **Documentation**: [.gradle-docs/README.md](.gradle-docs/README.md)
+- **Documentation**: [.gradle-docs/README.md](README.md)
 
 ---
 

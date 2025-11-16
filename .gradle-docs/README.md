@@ -115,7 +115,7 @@ gradle release -PbundleVersion=8.4.14
 
 | Task                  | Description                                      | Example                                  |
 |-----------------------|--------------------------------------------------|------------------------------------------|
-| `release`             | Build release package (interactive/non-interactive) | `gradle release -PbundleVersion=8.3.15` |
+| `release`             | Build and package release (interactive/non-interactive) | `gradle release -PbundleVersion=8.3.15` |
 | `releaseBuild`        | Execute the release build process                | `gradle releaseBuild`                    |
 | `clean`               | Clean build artifacts and temporary files        | `gradle clean`                           |
 
@@ -202,6 +202,8 @@ module-php/
 ├── tmp/                   # Temporary build files
 │   ├── prep/              # Prepared bundles
 │   └── downloads/         # Downloaded dependencies
+├── build/                 # Gradle build outputs
+│   └── distributions/     # Final packaged archives (.7z/.zip)
 ├── build.gradle           # Main Gradle build script
 ├── settings.gradle        # Gradle settings
 ├── build.properties       # Build configuration
@@ -238,6 +240,33 @@ module-php/
    - Copy to appropriate directories
                     ↓
 8. Output prepared bundle to tmp/prep/
+                    ↓
+9. Package prepared folder into archive in build/distributions/
+   - The archive includes the top-level folder: php{version}/
+```
+
+### Packaging Details
+
+- Archive name format: `bearsampp-php-{version}-{bundle.release}.{7z|zip}`
+- Location: `build/distributions/`
+- Content root: the top-level folder inside the archive is `{bundle.release}/` (e.g., `2025.10.31/`).
+- Inside `{bundle.release}/` the structure mirrors Bruno:
+  - `bin/php{version}/...` → the prepared current version
+  - `bin/archived/` → all archived versions from the repository’s `bin/archived/`
+  - `releases.properties` (optional) at the same level as `bin/`
+
+To verify the folder is included at the root of the archive:
+
+```bash
+# 7z
+7z l build/distributions/bearsampp-php-8.4.14-2025.10.31.7z | more
+# You should see entries beginning with:
+#   2025.10.31/bin/php8.4.14/
+#   2025.10.31/bin/archived/
+
+# PowerShell (zip example)
+Expand-Archive -Path build/distributions/bearsampp-php-8.4.14-2025.10.31.zip -DestinationPath .\_inspect
+Get-ChildItem .\_inspect\2025.10.31\bin | Select-Object Name
 ```
 
 ### Extension Processing
@@ -398,4 +427,8 @@ For issues and questions:
 
 **Last Updated**: 2025-01-31  
 **Version**: 2025.10.31  
-**Build System**: Pure Gradle
+**Build System**: Pure Gradle (no wrapper, no Ant)
+
+Notes:
+- This project deliberately does not ship the Gradle Wrapper. Install Gradle 8+ locally and run with `gradle ...`.
+- Legacy Ant files (e.g., Eclipse `.launch` referencing `build.xml`) are deprecated and not used by the build.

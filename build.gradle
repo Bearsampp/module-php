@@ -39,11 +39,26 @@ ext {
     bundleType = buildProps.getProperty('bundle.type', 'bins')
     bundleFormat = buildProps.getProperty('bundle.format', '7z')
 
-    // PHP-specific paths
+    // External build base path precedence: build.properties (build.path) -> env(BEARSAMPP_BUILD_PATH) -> default <root>/bearsampp-build
+    def buildPathFromProps = (buildProps.getProperty('build.path', '') ?: '').trim()
+    def buildPathFromEnv = System.getenv('BEARSAMPP_BUILD_PATH') ?: ''
+    def defaultBuildPath = "${rootDir}/bearsampp-build"
+    buildBasePath = buildPathFromProps ? buildPathFromProps : (buildPathFromEnv ? buildPathFromEnv : defaultBuildPath)
+
+    // Shared external tmp tree (MySQL pattern)
+    buildTmpPath = file("${buildBasePath}/tmp").absolutePath
+    bundleTmpPrepPath = file("${buildTmpPath}/bundles_prep/${bundleType}/${bundleName}").absolutePath
+    bundleTmpBuildPath = file("${buildTmpPath}/bundles_build/${bundleType}/${bundleName}").absolutePath
+    bundleTmpSrcPath = file("${buildTmpPath}/bundles_src").absolutePath
+    bundleTmpDownloadPath = file("${buildTmpPath}/downloads/${bundleName}").absolutePath
+    bundleTmpExtractPath = file("${buildTmpPath}/extract/${bundleName}").absolutePath
+
+    // Final external output path for archives (e.g., bearsampp-build/bins/php/2025.10.31)
+    moduleBuildOutputPath = file("${buildBasePath}/${bundleType}/${bundleName}/${bundleRelease}").absolutePath
+
+    // PHP-specific paths (static in repo)
     phpExtPath = file("${projectDir}/ext").absolutePath
     pearInstallPath = file("${projectDir}/pear").absolutePath
-    bundleTmpPrepPath = file("${projectDir}/tmp/prep").absolutePath
-    buildTmpPath = file("${projectDir}/tmp").absolutePath
 }
 
 // Verify dev path exists
@@ -92,6 +107,16 @@ tasks.register('info') {
           Project Dir:  ${projectBasedir}
           Root Dir:     ${rootDir}
           Dev Path:     ${devPath}
+          Build Base:   ${buildBasePath}
+          Output Dir:   ${moduleBuildOutputPath}
+          Tmp Root:     ${buildTmpPath}
+          Tmp Prep:     ${bundleTmpPrepPath}
+          Tmp Build:    ${bundleTmpBuildPath}
+          Tmp Src:      ${bundleTmpSrcPath}
+          Downloads:    ${bundleTmpDownloadPath}
+          Extract:      ${bundleTmpExtractPath}
+          Gradle Build: ${buildDir}
+          Distributions:${buildDir}/distributions
           PHP Ext:      ${phpExtPath}
           PEAR Install: ${pearInstallPath}
 
@@ -287,62 +312,212 @@ def extractArchive(File archive, File destDir) {
     println "Extracted to: ${destDir}"
 }
 
-// Task: Main release task
-tasks.register('release') {
-    group = 'build'
-    description = 'Build release package (interactive or use -PbundleVersion=X.X.X for non-interactive)'
+// Helper methods for version discovery and selection
+def findAvailableVersions = {
+    def binDir = new File(projectDir, 'bin')
+    def archivedDir = new File(projectDir, 'bin/archived')
+    def versions = [] as List<String>
 
-    doLast {
-        def versionToBuild = project.findProperty('bundleVersion')
+    if (binDir.exists()) {
+        versions.addAll(
+            (binDir.listFiles() ?: [])
+                .findAll { it.isDirectory() && it.name.startsWith(bundleName) && it.name != 'archived' }
+                .collect { it.name.replace(bundleName, '') }
+        )
+    }
 
-        if (!versionToBuild) {
-            // Interactive mode - prompt for version
-            println "=".multiply(70)
-            println "Available PHP versions in bin/:"
-            println "-".multiply(70)
-
-            def binDir = file("${projectDir}/bin")
-            def versions = binDir.listFiles()
+    if (archivedDir.exists()) {
+        versions.addAll(
+            (archivedDir.listFiles() ?: [])
                 .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
                 .collect { it.name.replace(bundleName, '') }
-                .sort()
+        )
+    }
 
-            versions.each { version ->
-                println "  ${version}"
+    return versions.unique()
+}
+
+def latestVersion = { List<String> versions ->
+    if (versions.isEmpty()) return null
+    // Compare numerically by dot-separated parts
+    return versions.max { a, b ->
+        def pa = a.split('\\.').collect { it as int }
+        def pb = b.split('\\.').collect { it as int }
+        def len = Math.max(pa.size(), pb.size())
+        for (int i = 0; i < len; i++) {
+            def ai = i < pa.size() ? pa[i] : 0
+            def bi = i < pb.size() ? pb[i] : 0
+            if (ai != bi) return ai <=> bi
+        }
+        return 0
+    }
+}
+
+// Task: Resolve version (interactive by default; supports -PbundleVersion and '*')
+tasks.register('resolveVersion') {
+    group = 'build'
+    description = 'Resolve bundleVersion (interactive by default, or use -PbundleVersion=*,<ver>)'
+    // Interactive capability is not compatible with configuration cache
+    notCompatibleWithConfigurationCache("interactive prompt for bundleVersion when property is absent")
+
+    doLast {
+        def supplied = project.findProperty('bundleVersion') as String
+        // Aggregate both bin/ and bin/archived/ and display with location tags
+        def all = findAvailableVersions().sort { a, b ->
+            def pa = a.split('\\.').collect { it as int }
+            def pb = b.split('\\.').collect { it as int }
+            for (int i=0; i<Math.max(pa.size(), pb.size()); i++) {
+                def ai = i < pa.size() ? pa[i] : 0
+                def bi = i < pb.size() ? pb[i] : 0
+                if (ai != bi) return ai <=> bi
+            }
+            return 0
+        }
+        def inBin = new File(projectDir, 'bin').exists() ? (new File(projectDir, 'bin').listFiles()
+            ?.findAll { it.isDirectory() && it.name.startsWith(bundleName) && it.name != 'archived' }
+            ?.collect { it.name.replace(bundleName, '') } ?: []) : []
+        def inArchived = new File(projectDir, 'bin/archived').exists() ? (new File(projectDir, 'bin/archived').listFiles()
+            ?.findAll { it.isDirectory() && it.name.startsWith(bundleName) }
+            ?.collect { it.name.replace(bundleName, '') } ?: []) : []
+
+        String resolved
+        if (supplied) {
+            if (supplied == '*') {
+                resolved = latestVersion(all)
+                if (!resolved) {
+                    throw new GradleException("No versions found under bin/ to resolve latest from.")
+                }
+                println "Resolved latest version: ${resolved}"
+            } else {
+                resolved = supplied
+            }
+        } else {
+            println "=".multiply(70)
+            println "Available ${bundleName} versions (index, version, location):"
+            println "-".multiply(70)
+            all.eachWithIndex { v, idx ->
+                def indexStr = String.format('%2d', idx + 1)
+                def tag = inBin.contains(v) && inArchived.contains(v) ? '[bin + bin/archived]' : (inBin.contains(v) ? '[bin]' : (inArchived.contains(v) ? '[bin/archived]' : '[unknown]'))
+                println "  ${indexStr}. ${v.padRight(12)} ${tag}"
             }
             println "-".multiply(70)
-
-            print "\nEnter bundle version to build: "
+            print "\nEnter version to build (index or version string): "
             System.out.flush()
-
             def reader = new BufferedReader(new InputStreamReader(System.in))
-            versionToBuild = reader.readLine()?.trim()
-
-            if (!versionToBuild) {
+            def input = reader.readLine()?.trim()
+            if (!input) {
                 throw new GradleException("No version specified")
+            }
+            if (input.isInteger()) {
+                def idx = input.toInteger()
+                if (idx < 1 || idx > all.size()) {
+                    throw new GradleException("Invalid index: ${input}. Choose 1..${all.size()} or enter a version string.")
+                }
+                resolved = all[idx - 1]
+            } else {
+                resolved = input
             }
         }
 
-        println "=".multiply(70)
-        println "Building release for ${bundleName} version ${versionToBuild}..."
-        println "=".multiply(70)
-
-        def bundlePath = file("${projectDir}/bin/${bundleName}${versionToBuild}")
-
+        // Validate existence in bin/ or bin/archived/
+        def bundlePath = new File(projectDir, "bin/${bundleName}${resolved}")
         if (!bundlePath.exists()) {
-            def availableVersions = file("${projectDir}/bin").listFiles()
-                .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
-                .collect { "  - " + it.name.replace(bundleName, '') }
-                .join('\n')
-
-            throw new GradleException("Bundle version not found: ${bundlePath}\n\nAvailable versions in bin/:\n${availableVersions}")
+            def archivedPath = new File(projectDir, "bin/archived/${bundleName}${resolved}")
+            if (archivedPath.exists()) {
+                bundlePath = archivedPath
+            } else {
+                def listing = all.collect { "  - ${it}" }.join('\n')
+                throw new GradleException("Bundle version not found in bin/ or bin/archived/: ${bundleName}${resolved}\n\nAvailable versions:\n${listing}")
+            }
         }
 
-        println "Bundle path: ${bundlePath}"
-        println ""
+        // Expose to subsequent tasks as extra property (readable via project.findProperty)
+        project.ext.set('bundleVersion', resolved)
+        println "\nSelected version: ${resolved}\n"
+    }
+}
 
-        // Execute the release build
-        tasks.getByName('releaseBuild').execute()
+// Task: Main release task (interactive by default; non‑interactive when -PbundleVersion provided)
+tasks.register('release') {
+    group = 'build'
+    description = 'Build release package (interactive by default; -PbundleVersion=* or X.Y.Z for non-interactive)'
+
+    // Wire task graph instead of executing tasks programmatically
+    dependsOn 'resolveVersion', 'packageRelease'
+}
+
+// Task: Interactive release (explicitly prompts; not compatible with configuration cache)
+tasks.register('releaseInteractive') {
+    group = 'build'
+    description = 'Interactive release (prompts for version)'
+    dependsOn 'packageRelease'
+
+    // Interactive tasks are not compatible with configuration cache
+    notCompatibleWithConfigurationCache("interactive prompt for bundleVersion")
+
+    doFirst {
+        def binDir = new File(projectDir, 'bin')
+        def inBin = binDir.exists() ? binDir.listFiles()
+            .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
+            .collect { it.name.replace(bundleName, '') } : []
+        def archivedDir = new File(projectDir, 'bin/archived')
+        def inArchived = archivedDir.exists() ? archivedDir.listFiles()
+            .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
+            .collect { it.name.replace(bundleName, '') } : []
+        def all = (inBin + inArchived).toSet().toList().sort { a, b ->
+                def pa = a.split('\\.').collect { it as int }
+                def pb = b.split('\\.').collect { it as int }
+                for (int i=0; i<Math.max(pa.size(), pb.size()); i++) {
+                    def ai = i < pa.size() ? pa[i] : 0
+                    def bi = i < pb.size() ? pb[i] : 0
+                    if (ai != bi) return ai <=> bi
+                }
+                return 0
+            }
+
+        println "=".multiply(70)
+        println "Available ${bundleName} versions (index, version, location):"
+        println "-".multiply(70)
+        all.eachWithIndex { v, idx ->
+            def indexStr = String.format('%2d', idx + 1)
+            def tag = inBin.contains(v) && inArchived.contains(v) ? '[bin + bin/archived]' : (inBin.contains(v) ? '[bin]' : (inArchived.contains(v) ? '[bin/archived]' : '[unknown]'))
+            println "  ${indexStr}. ${v.padRight(12)} ${tag}"
+        }
+        println "-".multiply(70)
+
+        print "\nEnter version to build (index or version string): "
+        System.out.flush()
+
+        def reader = new BufferedReader(new InputStreamReader(System.in))
+        def input = reader.readLine()?.trim()
+        if (!input) {
+            throw new GradleException("No version specified")
+        }
+
+        def versionToBuild
+        if (input.isInteger()) {
+            def idx = input.toInteger()
+            if (idx < 1 || idx > all.size()) {
+                throw new GradleException("Invalid index: ${input}. Choose 1..${all.size()} or enter a version string.")
+            }
+            versionToBuild = all[idx - 1]
+        } else {
+            versionToBuild = input
+        }
+
+        // Validate selected version exists in bin/ or bin/archived/
+        def bundlePath = new File(projectDir, "bin/${bundleName}${versionToBuild}")
+        if (!bundlePath.exists()) {
+            def archivedPath = new File(projectDir, "bin/archived/${bundleName}${versionToBuild}")
+            if (!archivedPath.exists()) {
+                def listing = all.collect { "  - ${it}" }.join('\n')
+                throw new GradleException("Bundle version not found in bin/ or bin/archived/: ${bundleName}${versionToBuild}\n\nAvailable versions:\n${listing}")
+            }
+        }
+
+        // Expose version to dependent tasks
+        project.ext.set('bundleVersion', versionToBuild)
+        println "\nBuilding release for ${bundleName} version ${versionToBuild}...\n"
     }
 }
 
@@ -350,6 +525,7 @@ tasks.register('release') {
 tasks.register('releaseBuild') {
     group = 'build'
     description = 'Execute the release build process'
+    dependsOn 'resolveVersion'
 
     doLast {
         def versionToBuild = project.findProperty('bundleVersion')
@@ -357,7 +533,17 @@ tasks.register('releaseBuild') {
             throw new GradleException("bundleVersion property not set")
         }
 
-        def bundlePath = file("${projectDir}/bin/${bundleName}${versionToBuild}")
+        // Resolve source folder from bin/ or bin/archived/
+        def bundlePath = new File(projectDir, "bin/${bundleName}${versionToBuild}")
+        if (!bundlePath.exists()) {
+            def archivedPath = new File(projectDir, "bin/archived/${bundleName}${versionToBuild}")
+            if (archivedPath.exists()) {
+                bundlePath = archivedPath
+            } else {
+                throw new GradleException("Bundle folder not found in bin/ or bin/archived/: ${bundleName}${versionToBuild}")
+            }
+        }
+
         def bundleFolder = bundlePath.name
         def bundleVersion = bundleFolder.replace(bundleName, '')
 
@@ -365,7 +551,7 @@ tasks.register('releaseBuild') {
         println "Version: ${bundleVersion}"
 
         // Prepare PHP directory
-        def phpPrepPath = file("${bundleTmpPrepPath}/${bundleFolder}")
+        def phpPrepPath = new File(bundleTmpPrepPath, bundleFolder)
         delete phpPrepPath
         phpPrepPath.mkdirs()
 
@@ -407,6 +593,158 @@ tasks.register('releaseBuild') {
         println "Output: ${phpPrepPath}"
         println "=".multiply(70)
     }
+}
+
+// Task: Package release as archive (ensures the version folder is included at archive root)
+// - Creates: bearsampp-build/bins/php/<bundle.release>/bearsampp-php-<version>-<bundle.release>.<format>
+// - The archive contains the top-level folder: <bundleName><version>/ ...
+// Provider resolves version from either -PbundleVersion or value set by resolveVersion in project.ext
+def bundleVersionProvider = providers.provider {
+    def fromProp = project.findProperty('bundleVersion') as String
+    if (fromProp) return fromProp
+    def extras = project.extensions.extraProperties
+    return extras.has('bundleVersion') ? (extras.get('bundleVersion') as String) : null
+}
+def externalOutputDir = file("${moduleBuildOutputPath}")
+
+// Guard task: ensure bundleVersion is resolved before any packaging runs
+tasks.register('assertVersionResolved') {
+    group = 'build'
+    description = 'Fail fast if bundleVersion was not resolved by resolveVersion'
+    dependsOn 'resolveVersion'
+    doLast {
+        def versionToBuild = bundleVersionProvider.getOrNull()
+        if (!versionToBuild) {
+            throw new GradleException("bundleVersion property not set. Run 'gradle resolveVersion' or invoke 'gradle release -PbundleVersion=<'*'|X.Y.Z>'")
+        }
+    }
+}
+
+// 7z packager (pure Gradle via Exec; requires 7-Zip in PATH)
+tasks.register('packageRelease7z', Exec) {
+    group = 'build'
+    description = 'Package release into a .7z archive (includes version folder at root)'
+    // Ensure version is resolved and preparation executed before packaging
+    dependsOn 'assertVersionResolved', 'releaseBuild'
+
+    doFirst {
+        def versionToBuild = bundleVersionProvider.getOrNull()
+        if (!versionToBuild) {
+            throw new GradleException("bundleVersion property not set")
+        }
+
+        // Ensure prepared php directory exists
+        def bundleFolder = "${bundleName}${versionToBuild}"
+        def prepRoot = file("${bundleTmpPrepPath}")
+        def srcDir = new File(prepRoot, bundleFolder)
+        if (!srcDir.exists()) {
+            throw new GradleException("Prepared folder not found: ${srcDir}. Run releaseBuild first.")
+        }
+
+        externalOutputDir.mkdirs()
+        def archiveName = "bearsampp-${bundleName}-${versionToBuild}-${bundleRelease}.7z"
+        def archiveFile = new File(externalOutputDir, archiveName)
+
+        // Create archive so that php{version}/ is at the root
+        workingDir prepRoot
+        executable '7z'
+        args 'a', '-t7z', archiveFile.absolutePath, bundleFolder
+
+        println "Packaging (7z): ${archiveFile}"
+        println "Included root folder: ${bundleFolder}/"
+    }
+}
+
+// Zip packager (Gradle native Zip task) — used if bundle.format != 7z
+tasks.register('packageReleaseZip', Zip) {
+    group = 'build'
+    description = 'Package release into a .zip archive (includes version folder at root)'
+    // Ensure version is resolved and preparation executed before packaging
+    dependsOn 'assertVersionResolved', 'releaseBuild'
+
+    doFirst {
+        def versionToBuild = bundleVersionProvider.getOrNull()
+        if (!versionToBuild) {
+            throw new GradleException("bundleVersion property not set")
+        }
+
+        // Ensure prepared php directory exists
+        def bundleFolder = "${bundleName}${versionToBuild}"
+        def prepRoot = file("${bundleTmpPrepPath}")
+        def srcDir = new File(prepRoot, bundleFolder)
+        if (!srcDir.exists()) {
+            throw new GradleException("Prepared folder not found: ${srcDir}. Run releaseBuild first.")
+        }
+
+        archiveFileName.set("bearsampp-${bundleName}-${versionToBuild}-${bundleRelease}.zip")
+        destinationDirectory.set(externalOutputDir)
+
+        // Include the version folder as the top-level entry in the archive
+        from(prepRoot) {
+            include "${bundleFolder}/**"
+        }
+
+        println "Packaging (zip): ${new File(externalOutputDir, archiveFileName.get()).absolutePath}"
+        println "Included root folder: ${bundleFolder}/"
+    }
+}
+
+// Dispatcher task that chooses packager based on bundle.format (configured without executing tasks programmatically)
+def archiveFormat = (bundleFormat ?: '7z').toLowerCase()
+tasks.register('packageRelease') {
+    group = 'build'
+    description = 'Package release into archive (7z or zip) including the version folder at root'
+    // Ensure the preparation step runs before packaging
+    dependsOn 'resolveVersion', 'releaseBuild', 'assertVersionResolved'
+    // Select the concrete packager at configuration time based on build.properties
+    dependsOn archiveFormat == '7z' ? 'packageRelease7z' : 'packageReleaseZip'
+}
+
+// Task: Generate hash files for the produced archive (.md5, .sha1, .sha256, .sha512)
+tasks.register('generateHashes') {
+    group = 'build'
+    description = 'Generate hash sidecar files for the packaged archive'
+
+    doLast {
+        def versionToBuild = bundleVersionProvider.getOrNull()
+        if (!versionToBuild) {
+            throw new GradleException("bundleVersion property not set")
+        }
+        def extFormat = (bundleFormat ?: '7z').toLowerCase()
+        def archive = new File(externalOutputDir, "bearsampp-${bundleName}-${versionToBuild}-${bundleRelease}.${extFormat}")
+        if (!archive.exists()) {
+            throw new GradleException("Archive not found for hashing: ${archive}")
+        }
+
+        def calcHash = { File f, String algorithm ->
+            def digest = java.security.MessageDigest.getInstance(algorithm)
+            f.withInputStream { stream ->
+                byte[] buf = new byte[8192]
+                int r
+                while ((r = stream.read(buf)) != -1) {
+                    digest.update(buf, 0, r)
+                }
+            }
+            digest.digest().collect { String.format('%02x', it) }.join('')
+        }
+
+        def writeHash = { String algo, String ext ->
+            def h = calcHash(archive, algo)
+            def out = new File(archive.absolutePath + ".${ext}")
+            out.text = "${h} ${archive.name}\n"
+            println "Created: ${out.name}"
+        }
+
+        writeHash('MD5', 'md5')
+        writeHash('SHA-1', 'sha1')
+        writeHash('SHA-256', 'sha256')
+        writeHash('SHA-512', 'sha512')
+    }
+}
+
+// Ensure hashes are generated after packaging during release
+tasks.named('release') {
+    finalizedBy 'generateHashes'
 }
 
 // Helper: Process PHP extensions
@@ -622,25 +960,56 @@ tasks.register('listVersions') {
 
     doLast {
         def binDir = file("${projectDir}/bin")
+        def archivedDir = file("${projectDir}/bin/archived")
+
         if (!binDir.exists()) {
             println "bin/ directory not found"
             return
         }
 
-        def versions = binDir.listFiles()
-            .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
-            .collect { it.name.replace(bundleName, '') }
-            .sort()
+        def inBin = binDir.listFiles()
+            ?.findAll { it.isDirectory() && it.name.startsWith(bundleName) && it.name != 'archived' }
+            ?.collect { it.name.replace(bundleName, '') } ?: []
 
-        println "\nAvailable ${bundleName} versions in bin/:"
+        def inArchived = archivedDir.exists() ? (archivedDir.listFiles()
+            ?.findAll { it.isDirectory() && it.name.startsWith(bundleName) }
+            ?.collect { it.name.replace(bundleName, '') } ?: []) : []
+
+        def allVersions = (inBin + inArchived).toSet().toList().sort { a, b ->
+            def pa = a.split('\\.').collect { it as int }
+            def pb = b.split('\\.').collect { it as int }
+            for (int i = 0; i < Math.max(pa.size(), pb.size()); i++) {
+                def ai = i < pa.size() ? pa[i] : 0
+                def bi = i < pb.size() ? pb[i] : 0
+                if (ai != bi) return ai <=> bi
+            }
+            return 0
+        }
+
+        println "\nAvailable ${bundleName} versions (index, version, location):"
         println "-".multiply(60)
-        versions.each { version ->
-            println "  ${version}"
+        allVersions.eachWithIndex { v, idx ->
+            def tag
+            def inBinFlag = inBin.contains(v)
+            def inArchivedFlag = inArchived.contains(v)
+            if (inBinFlag && inArchivedFlag) {
+                tag = "[bin + bin/archived]"
+            } else if (inBinFlag) {
+                tag = "[bin]"
+            } else if (inArchivedFlag) {
+                tag = "[bin/archived]"
+            } else {
+                tag = "[unknown]"
+            }
+            def indexStr = String.format('%2d', idx + 1)
+            println "  ${indexStr}. ${v.padRight(12)} ${tag}"
         }
         println "-".multiply(60)
-        println "Total versions: ${versions.size()}"
-        println "\nTo build a specific version:"
-        println "  gradle release -PbundleVersion=${versions.last()}"
+        println "Total versions: ${allVersions.size()}"
+        if (!allVersions.isEmpty()) {
+            println "\nTo build a specific version:"
+            println "  gradle release -PbundleVersion=${allVersions.last()}"
+        }
     }
 }
 

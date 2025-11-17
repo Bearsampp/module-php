@@ -1,4 +1,4 @@
-# Gradle Tasks Reference
+﻿# Gradle Tasks Reference
 
 Complete reference for all available Gradle tasks in the Bearsampp Module PHP project.
 
@@ -46,12 +46,12 @@ gradle release -PbundleVersion=8.4.14
 4. Processes extensions (if configured)
 5. Processes PEAR (if configured)
 6. Processes dependencies (if configured)
-7. Outputs prepared bundle under `tmp/prep/php{version}/`
-8. Packages the prepared folder into an archive in `build/distributions/` ensuring the top-level folder inside the archive is `{bundle.release}/` containing `bin/` and `bin/archived/`
+7. Outputs prepared bundle under `bearsampp-build/tmp/bundles_prep/bins/php/php{version}/`
+8. Packages the prepared folder into an archive in `bearsampp-build/bins/php/{bundle.release}/` ensuring the top-level folder inside the archive is `{bundle.release}/` containing `bin/` and `bin/archived/`
 
 **Output Locations:**
-- Prepared folder: `tmp/prep/php{version}/`
-- Final archive: `build/distributions/bearsampp-php-{version}-{bundle.release}.{7z|zip}`
+- Prepared folder: `bearsampp-build/tmp/bundles_prep/bins/php/php{version}/`
+- Final archive: `bearsampp-build/bins/php/{bundle.release}/bearsampp-php-{version}-{bundle.release}.{7z|zip}`
 
 ---
 
@@ -91,7 +91,7 @@ gradle packageRelease -PbundleVersion=8.3.15
   - Root folder: `{bundle.release}/` (e.g., `2025.10.31/`)
   - Inside root: `bin/php{version}/` and `bin/archived/`
   - Optional: `releases.properties` at the same level as `bin/`
-- Output: `build/distributions/bearsampp-php-{version}-{bundle.release}.{7z|zip}`
+- Output: `bearsampp-build/bins/php/{bundle.release}/bearsampp-php-{version}-{bundle.release}.{7z|zip}`
 
 ---
 
@@ -555,3 +555,4 @@ Set via `-D` flag:
 
 **Last Updated**: 2025-01-31  
 **Version**: 2025.10.31
+

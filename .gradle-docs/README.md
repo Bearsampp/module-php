@@ -199,11 +199,17 @@ module-php/
 â”œâ”€â”€ pear/                  # PEAR installation scripts
 â”‚   â”œâ”€â”€ pear-install.bat
 â”‚   â””â”€â”€ pear-install.php
-â”œâ”€â”€ tmp/                   # Temporary build files
-â”‚   â”œâ”€â”€ prep/              # Prepared bundles
-â”‚   â””â”€â”€ downloads/         # Downloaded dependencies
-â”œâ”€â”€ build/                 # Gradle build outputs
-â”‚   â””â”€â”€ distributions/     # Final packaged archives (.7z/.zip)
+bearsampp-build/                    # External build directory (outside repo)
+├── tmp/                            # Temporary build files
+│   ├── bundles_prep/bins/php/      # Prepared bundles
+│   ├── bundles_build/bins/php/     # Build staging
+│   ├── downloads/php/              # Downloaded dependencies
+│   └── extract/php/                # Extracted archives
+└── bins/php/                       # Final packaged archives
+    └── 2025.10.31/                 # Release version
+        ├── bearsampp-php-8.3.15-2025.10.31.7z
+        ├── bearsampp-php-8.3.15-2025.10.31.7z.md5
+        └── ...
 â”œâ”€â”€ build.gradle           # Main Gradle build script
 â”œâ”€â”€ settings.gradle        # Gradle settings
 â”œâ”€â”€ build.properties       # Build configuration
@@ -241,7 +247,7 @@ module-php/
                     â†“
 8. Output prepared bundle to tmp/prep/
                     â†“
-9. Package prepared folder into archive in build/distributions/
+9. Package prepared folder into archive in bearsampp-build/bins/php/{bundle.release}/
    - The archive includes the top-level folder: php{version}/
 ```
 

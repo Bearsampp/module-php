@@ -1,4 +1,4 @@
-# Documentation Index
+﻿# Documentation Index
 
 Complete index of all Gradle build documentation for Bearsampp Module PHP.
 
@@ -186,7 +186,8 @@ gradle clean
 |-----------------------|------------------------------------------|
 | `bin/`                | PHP version bundles                      |
 | `pear/`               | PEAR installation scripts                |
-| `tmp/`                | Temporary build files                    |
+| `bearsampp-build/tmp/` | Temporary build files (external)       |
+| `bearsampp-build/bins/` | Final packaged archives (external)    |
 | `.gradle-docs/`       | Gradle documentation                     |
 
 ---

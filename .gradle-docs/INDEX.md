@@ -12,7 +12,6 @@ Complete index of all Gradle build documentation for Bearsampp Module PHP.
 | **Task Reference**    | All available Gradle tasks                       | [TASKS.md](TASKS.md)          |
 | **Configuration**     | Configuration files and properties               | [CONFIGURATION.md](CONFIGURATION.md) |
 | **API Reference**     | Build script API and helper functions            | [API.md](API.md)              |
-| **Migration Guide**   | Ant to Gradle migration guide                    | [MIGRATION.md](MIGRATION.md)  |
 
 ---
 
@@ -24,8 +23,7 @@ Complete index of all Gradle build documentation for Bearsampp Module PHP.
 ├── README.md             # Main documentation and quick start
 ├── TASKS.md              # Complete task reference
 ├── CONFIGURATION.md      # Configuration guide
-├── API.md                # API reference for build scripts
-└── MIGRATION.md          # Ant to Gradle migration guide
+└── API.md                # API reference for build scripts
 ```
 
 ---
@@ -38,13 +36,6 @@ Complete index of all Gradle build documentation for Bearsampp Module PHP.
 2. **Verify Setup**: Run `gradle verify` to check environment
 3. **List Tasks**: Run `gradle tasks` to see available tasks
 4. **Build Release**: Run `gradle release -PbundleVersion=8.3.15`
-
-### Migrating from Ant
-
-1. **Migration Guide**: [MIGRATION.md](MIGRATION.md) - Complete migration guide
-2. **Command Mapping**: See command equivalents in migration guide
-3. **File Changes**: Understand what changed from Ant to Gradle
-4. **Troubleshooting**: Common migration issues and solutions
 
 ### Advanced Users
 
@@ -95,16 +86,6 @@ Complete index of all Gradle build documentation for Bearsampp Module PHP.
 | Extension Points      | API.md                | Extension Points                 |
 | Properties API        | API.md                | Properties API                   |
 | Task API              | API.md                | Task API                         |
-
-### Migration
-
-| Topic                 | Document              | Section                          |
-|-----------------------|-----------------------|----------------------------------|
-| Overview              | MIGRATION.md          | Overview                         |
-| What Changed          | MIGRATION.md          | What Changed                     |
-| Command Mapping       | MIGRATION.md          | Command Mapping                  |
-| File Changes          | MIGRATION.md          | File Changes                     |
-| Troubleshooting       | MIGRATION.md          | Troubleshooting                  |
 
 ---
 
@@ -221,7 +202,6 @@ gradle clean
 | Helper Functions      | API.md                | Helper Functions                 |
 | Info                  | TASKS.md              | info task                        |
 | Installation          | README.md             | Installation                     |
-| Migration             | MIGRATION.md          | All sections                     |
 
 ### P-R
 
@@ -236,7 +216,7 @@ gradle clean
 | Keyword               | Document              | Section                          |
 |-----------------------|-----------------------|----------------------------------|
 | Tasks                 | TASKS.md              | All sections                     |
-| Troubleshooting       | README.md, MIGRATION.md | Troubleshooting sections       |
+| Troubleshooting       | README.md             | Troubleshooting                  |
 | Validation            | TASKS.md              | Verification Tasks               |
 | Verify                | TASKS.md              | verify task                      |
 
@@ -318,23 +298,6 @@ gradle clean
 
 ---
 
-### MIGRATION.md
-
-**Purpose**: Guide for migrating from Ant to Gradle
-
-**Contents**:
-- Migration overview
-- What changed from Ant to Gradle
-- Command mapping (Ant to Gradle)
-- File changes
-- Configuration changes
-- Task equivalents
-- Troubleshooting migration issues
-- Benefits of migration
-- Next steps for developers, CI/CD, and contributors
-
-**Target Audience**: Users migrating from Ant build system
-
 ---
 
 ## Version History
@@ -346,7 +309,6 @@ gradle clean
 |               |            | - Created TASKS.md                       |
 |               |            | - Created CONFIGURATION.md               |
 |               |            | - Created API.md                         |
-|               |            | - Created MIGRATION.md                   |
 |               |            | - Created INDEX.md                       |
 
 ---
@@ -384,4 +346,4 @@ For documentation issues or questions:
 
 **Last Updated**: 2025-01-31  
 **Version**: 2025.10.31  
-**Total Documents**: 6
+**Total Documents**: 5

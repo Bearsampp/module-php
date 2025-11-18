@@ -9,7 +9,6 @@
 - [Configuration](#configuration)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
-- [Migration Guide](#migration-guide)
 
 ---
 

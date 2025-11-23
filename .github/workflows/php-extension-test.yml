@@ -737,6 +737,7 @@ jobs:
           cat comment.md
 
       - name: Comment on PR
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -769,3 +770,10 @@ jobs:
                 body: comment
               });
             }
+      
+      - name: Display Results Summary (Manual Run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "## 🧪 PHP Extension Tests - Manual Run Results"
+          echo ""
+          cat comment.md

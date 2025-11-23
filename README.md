@@ -60,6 +60,7 @@ For complete documentation, see [.gradle-docs/README.md](.gradle-docs/README.md)
 - **Task Reference**: [.gradle-docs/TASKS.md](.gradle-docs/TASKS.md)
 - **Configuration Guide**: [.gradle-docs/CONFIGURATION.md](.gradle-docs/CONFIGURATION.md)
 - **API Reference**: [.gradle-docs/API.md](.gradle-docs/API.md)
+- **CI/CD Testing**: [docs/PHP-EXTENSION-TESTING.md](docs/PHP-EXTENSION-TESTING.md)
 - **Module Downloads**: https://bearsampp.com/module/php
 
 ## Issues

@@ -140,10 +140,16 @@ jobs:
               throw "7-Zip is required to extract .7z files"
             }
             
-            $phpExe = Join-Path $extractPath "php.exe"
-            if (-not (Test-Path $phpExe)) {
+            # Find php.exe in the extracted directory (may be nested)
+            $phpExe = Get-ChildItem -Path $extractPath -Filter "php.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            
+            if (-not $phpExe) {
+              Write-Host "Directory structure after extraction:"
+              Get-ChildItem -Path $extractPath -Recurse | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
               throw "php.exe not found after extraction"
             }
+            
+            $phpExe = $phpExe.FullName
             
             Write-Host "✅ PHP extracted successfully"
             echo "success=true" >> $env:GITHUB_OUTPUT

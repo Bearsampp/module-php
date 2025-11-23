@@ -697,13 +697,14 @@ jobs:
   report-results:
     name: Report Test Results
     needs: [detect-versions, test-php]
-    if: always() && needs.detect-versions.outputs.has-changes == 'true'
+    if: always() && needs.detect-versions.outputs.has-changes == 'true' && needs.test-php.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
       - name: Download all test results
         uses: actions/download-artifact@v4
         with:
           path: all-results
+        continue-on-error: true
 
       - name: Generate PR Comment
         run: |
@@ -712,14 +713,22 @@ jobs:
           echo "**Test Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> comment.md
           echo "" >> comment.md
           
-          for version_dir in all-results/test-results-*; do
-            if [ -d "$version_dir" ]; then
-              if [ -f "$version_dir/summary-"*.md ]; then
-                cat "$version_dir/summary-"*.md >> comment.md
-                echo "" >> comment.md
+          # Check if artifacts exist
+          if [ -d "all-results" ]; then
+            for version_dir in all-results/test-results-*; do
+              if [ -d "$version_dir" ]; then
+                for summary_file in "$version_dir"/summary-*.md; do
+                  if [ -f "$summary_file" ]; then
+                    cat "$summary_file" >> comment.md
+                    echo "" >> comment.md
+                  fi
+                done
               fi
-            fi
-          done
+            done
+          else
+            echo "⚠️ No test results available" >> comment.md
+            echo "" >> comment.md
+          fi
           
           echo "---" >> comment.md
           echo "" >> comment.md

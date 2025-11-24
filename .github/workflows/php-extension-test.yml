@@ -38,6 +38,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Get releases.properties from main branch
+        run: |
+          # Fetch releases.properties from main branch if it doesn't exist in current branch
+          if [ ! -f "releases.properties" ]; then
+            echo "releases.properties not found in current branch, fetching from main..."
+            git fetch origin main:main
+            git checkout main -- releases.properties || echo "Could not fetch releases.properties from main"
+          fi
+
       - name: Get changed PHP versions
         id: get-versions
         run: |
@@ -208,6 +217,8 @@ jobs:
       - name: Phase 1.1 - Download and Extract PHP
         id: download-php
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = "Stop"
           $version = "${{ matrix.version }}"
@@ -231,7 +242,18 @@ jobs:
             Write-Host "⏳ Downloading PHP archive..."
             
             try {
-              Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing -TimeoutSec 300
+              # Check if URL is a GitHub release URL and if we have a token
+              $headers = @{}
+              if ($url -match "github.com" -and $env:GH_TOKEN) {
+                Write-Host "Using GitHub authentication token for download"
+                $headers["Authorization"] = "token $env:GH_TOKEN"
+              }
+              
+              if ($headers.Count -gt 0) {
+                Invoke-WebRequest -Uri $url -OutFile $archivePath -Headers $headers -UseBasicParsing -TimeoutSec 300
+              } else {
+                Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing -TimeoutSec 300
+              }
             } catch {
               Write-Host "❌ ERROR: Download failed!"
               Write-Host "Error details: $($_.Exception.Message)"

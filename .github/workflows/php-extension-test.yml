@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'releases.properties'
+      - 'bin/**'
   workflow_dispatch:
     inputs:
       php_version:
@@ -48,48 +48,127 @@ jobs:
             echo "versions=[\"${{ inputs.php_version }}\"]" >> $GITHUB_OUTPUT
             echo "Testing PHP version: ${{ inputs.php_version }}"
           else
-            # Get the diff of releases.properties
-            git diff origin/main HEAD -- releases.properties > diff.txt
+            echo "=== Smart Version Detection ==="
+            echo ""
             
-            # Extract new version lines (lines starting with +)
-            NEW_VERSIONS=$(grep "^+" diff.txt | grep -v "^+++" | sed 's/^+//' | grep -E "^[0-9]+\.[0-9]+\.[0-9]+" | cut -d' ' -f1 || echo "")
+            # Primary Method: Check for changed files in /bin directory
+            echo "🔍 Method 1: Checking /bin directory for version changes..."
+            BIN_VERSIONS=""
             
-            # Also check PR title for version numbers
-            PR_TITLE="${{ github.event.pull_request.title }}"
-            if [ -n "$PR_TITLE" ]; then
-              echo "Checking PR title for version numbers: $PR_TITLE"
-              # Extract version patterns from PR title (e.g., 8.3.27, 8.4.0)
-              PR_VERSIONS=$(echo "$PR_TITLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+            # Get list of changed files in bin/ directory
+            CHANGED_BIN_FILES=$(git diff --name-only origin/main HEAD | grep "^bin/" || echo "")
+            
+            if [ -n "$CHANGED_BIN_FILES" ]; then
+              echo "Found changed files in /bin:"
+              echo "$CHANGED_BIN_FILES"
+              echo ""
               
-              if [ -n "$PR_VERSIONS" ]; then
-                echo "Found versions in PR title: $PR_VERSIONS"
+              # Extract version numbers from directory names (e.g., bin/php8.3.27/ -> 8.3.27)
+              BIN_VERSIONS=$(echo "$CHANGED_BIN_FILES" | grep -oE 'bin/php[0-9]+\.[0-9]+\.[0-9]+' | sed 's|bin/php||' | sort -u || echo "")
+              
+              if [ -n "$BIN_VERSIONS" ]; then
+                echo "✅ Detected versions from /bin directory:"
+                echo "$BIN_VERSIONS"
+                echo ""
+                
                 # Verify these versions exist in releases.properties
-                VALID_VERSIONS=""
-                for ver in $PR_VERSIONS; do
+                VALID_BIN_VERSIONS=""
+                for ver in $BIN_VERSIONS; do
                   if grep -q "^$ver\s*=" releases.properties; then
-                    echo "✅ Version $ver found in releases.properties"
-                    VALID_VERSIONS="$VALID_VERSIONS$ver"$'\n'
+                    echo "  ✅ Version $ver found in releases.properties"
+                    VALID_BIN_VERSIONS="$VALID_BIN_VERSIONS$ver"$'\n'
                   else
-                    echo "⚠️  Version $ver not found in releases.properties"
+                    echo "  ⚠️  Version $ver not found in releases.properties (skipping)"
                   fi
                 done
                 
-                if [ -n "$VALID_VERSIONS" ]; then
-                  NEW_VERSIONS="$VALID_VERSIONS"
+                if [ -n "$VALID_BIN_VERSIONS" ]; then
+                  BIN_VERSIONS="$VALID_BIN_VERSIONS"
+                else
+                  BIN_VERSIONS=""
                 fi
               fi
             fi
             
+            # Fallback Method: Check PR title for version numbers
+            PR_VERSIONS=""
+            if [ -z "$BIN_VERSIONS" ]; then
+              echo "🔍 Method 2 (Fallback): Checking PR title for version numbers..."
+              PR_TITLE="${{ github.event.pull_request.title }}"
+              
+              if [ -n "$PR_TITLE" ]; then
+                echo "PR Title: $PR_TITLE"
+                
+                # Extract version patterns from PR title (e.g., 8.3.27, 8.4.0)
+                PR_VERSIONS=$(echo "$PR_TITLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+                
+                if [ -n "$PR_VERSIONS" ]; then
+                  echo "Found versions in PR title: $PR_VERSIONS"
+                  echo ""
+                  
+                  # Verify these versions exist in releases.properties
+                  VALID_PR_VERSIONS=""
+                  for ver in $PR_VERSIONS; do
+                    if grep -q "^$ver\s*=" releases.properties; then
+                      echo "  ✅ Version $ver found in releases.properties"
+                      VALID_PR_VERSIONS="$VALID_PR_VERSIONS$ver"$'\n'
+                    else
+                      echo "  ⚠️  Version $ver not found in releases.properties (skipping)"
+                    fi
+                  done
+                  
+                  if [ -n "$VALID_PR_VERSIONS" ]; then
+                    PR_VERSIONS="$VALID_PR_VERSIONS"
+                  else
+                    PR_VERSIONS=""
+                  fi
+                fi
+              fi
+            fi
+            
+            # Final Fallback: Test latest 5 versions from releases.properties
+            FALLBACK_VERSIONS=""
+            if [ -z "$BIN_VERSIONS" ] && [ -z "$PR_VERSIONS" ]; then
+              echo "🔍 Method 3 (Final Fallback): Testing latest 5 versions from releases.properties..."
+              
+              # Extract all version numbers from releases.properties and get the latest 5
+              FALLBACK_VERSIONS=$(grep -E "^[0-9]+\.[0-9]+\.[0-9]+\s*=" releases.properties | cut -d'=' -f1 | tr -d ' ' | sort -V -r | head -5 || echo "")
+              
+              if [ -n "$FALLBACK_VERSIONS" ]; then
+                echo "✅ Will test latest 5 versions:"
+                echo "$FALLBACK_VERSIONS"
+                echo ""
+              fi
+            fi
+            
+            # Determine final version list
+            NEW_VERSIONS=""
+            if [ -n "$BIN_VERSIONS" ]; then
+              NEW_VERSIONS="$BIN_VERSIONS"
+              echo "📋 Using versions from /bin directory changes"
+            elif [ -n "$PR_VERSIONS" ]; then
+              NEW_VERSIONS="$PR_VERSIONS"
+              echo "📋 Using versions from PR title"
+            elif [ -n "$FALLBACK_VERSIONS" ]; then
+              NEW_VERSIONS="$FALLBACK_VERSIONS"
+              echo "📋 Using latest 5 versions (fallback)"
+            fi
+            
             if [ -z "$NEW_VERSIONS" ]; then
+              echo "❌ No PHP versions detected by any method"
               echo "has-changes=false" >> $GITHUB_OUTPUT
               echo "versions=[]" >> $GITHUB_OUTPUT
-              echo "No new PHP versions detected"
             else
+              echo ""
+              echo "=== Final Version List ==="
+              echo "$NEW_VERSIONS"
+              echo ""
+              
               echo "has-changes=true" >> $GITHUB_OUTPUT
               # Convert to JSON array
               VERSIONS_JSON=$(echo "$NEW_VERSIONS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
               echo "versions=$VERSIONS_JSON" >> $GITHUB_OUTPUT
-              echo "Detected new PHP versions: $NEW_VERSIONS"
+              echo "✅ Will test $(echo "$NEW_VERSIONS" | wc -l) version(s)"
             fi
           fi
 

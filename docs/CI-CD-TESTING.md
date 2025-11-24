@@ -10,18 +10,45 @@ The PHP testing workflow is triggered automatically on:
 
 - **Pull Request Events**: When a PR is opened, synchronized (new commits pushed), reopened, or edited
   - Target branches: `main`
-  - Monitored files: `releases.properties`
+  - Monitored files: `bin/**`
+  - Note: `releases.properties` is not monitored as it's always updated before PR creation
 - **Manual Workflow Dispatch**: Can be triggered manually with options to test specific versions and platforms
 
 ## Test Scope
 
-The workflow intelligently determines which versions to test based on the context:
+The workflow intelligently determines which versions to test based on the context using a three-tier detection system:
 
 ### Pull Request Testing
-- **Smart Detection**: Automatically detects which PHP versions were added or modified in the PR
-- **PR Title Detection**: Extracts version numbers from PR titles (e.g., "Update PHP 8.3.27")
-- **Targeted Testing**: Only tests the versions that changed in `releases.properties` or mentioned in PR title
+
+**Smart Detection with Three-Tier Fallback System:**
+
+1. **Primary Method: /bin Directory Detection** (Most Accurate)
+   - Automatically detects which PHP versions are included in the PR from changed files in `/bin` directory
+   - Extracts version numbers from directory names (e.g., `bin/php8.3.27/` → `8.3.27`)
+   - Verifies detected versions exist in `releases.properties`
+   - **Use Case**: New versions are created and added to a pre-release (tagged with date, e.g., "2025.11.23")
+   - **How it works**:
+     - Version directories are created in `/bin` (e.g., `bin/php8.3.27/`, `bin/php8.4.0/`)
+     - The `releases.properties` file is updated via the releases.properties workflow
+     - A PR is created from a release branch (e.g., "November") to main
+     - This workflow detects changed files in `/bin` and extracts version numbers from directory names
+     - Tests are run against the version(s) found in `releases.properties` from that PR branch
+
+2. **Fallback Method: PR Title Detection**
+   - If no versions found in `/bin`, extracts version numbers from PR title
+   - Supports patterns like "8.3.27", "8.4.0" in PR titles
+   - Verifies these versions exist in `releases.properties`
+   - **Example**: PR title "Update docs for PHP 8.3.27" → tests version 8.3.27
+
+3. **Final Fallback: Latest 5 Versions**
+   - If no versions detected by either method, tests the latest 5 versions from `releases.properties`
+   - Ensures critical versions are always tested even when detection fails
+   - Versions are sorted and the 5 most recent are selected
+
+**Benefits:**
 - **Efficiency**: Reduces CI runtime by testing only relevant versions
+- **Reliability**: Multiple fallback methods ensure tests always run when needed
+- **Flexibility**: Adapts to different PR workflows and scenarios
 - **Multi-Platform**: Tests across Windows 10 and 11 with AMD and Intel configurations
 
 ### Manual Testing
@@ -30,10 +57,11 @@ The workflow intelligently determines which versions to test based on the contex
 - **Flexibility**: Useful for re-testing or validating specific versions
 
 ### Example Scenarios
-- **Add PHP 8.3.27**: Only version 8.3.27 is tested on all platforms
-- **PR title "Update docs for PHP 8.4.0"**: Version 8.4.0 is tested if it exists in `releases.properties`
+- **Add PHP 8.3.27 via /bin**: Version directory `bin/php8.3.27/` is created → Only version 8.3.27 is tested
+- **Multiple versions in PR**: `bin/php8.3.27/` and `bin/php8.4.0/` are added → Both versions are tested
+- **PR title "Update docs for PHP 8.4.0"**: Version 8.4.0 is tested if it exists in `releases.properties` (fallback method)
+- **Documentation-only PR**: No versions detected → Latest 5 versions are tested (final fallback)
 - **Modify existing version URL**: That specific version is tested
-- **Non-version changes**: No tests run (skipped)
 
 ## Test Phases
 
@@ -496,13 +524,16 @@ When tests are skipped, you'll see:
 
 ### Recent Improvements
 
-- Added PR title version detection
-- Implemented badge system for visual status
-- Enhanced error messages with emoji indicators
-- Added collapsible troubleshooting tips
-- Improved test summary formatting
-- Added platform-specific testing
-- Implemented smart test skipping
+- **Three-Tier Smart Detection System**: Primary detection from `/bin` directory changes, fallback to PR title, final fallback to latest 5 versions
+- **Bin Directory Monitoring**: Automatically detects versions from changed files in `/bin/php{version}/` directories
+- **Pre-release Workflow Support**: Optimized for pre-release → PR → main workflow with automatic version detection
+- **Latest 5 Versions Fallback**: Ensures tests always run even when specific versions aren't detected
+- **PR Title Version Detection**: Extracts version numbers from PR titles as fallback method
+- **Badge System**: Visual status indicators for each version/platform combination
+- **Enhanced Error Messages**: Detailed error reporting with emoji indicators
+- **Collapsible Troubleshooting Tips**: Context-sensitive help for failed tests
+- **Platform-Specific Testing**: Tests across Windows 10/11 with AMD/Intel configurations
+- **Smart Test Skipping**: Only runs tests when relevant changes are detected
 
 ### Future Enhancements
 

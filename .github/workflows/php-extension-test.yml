@@ -422,7 +422,7 @@ jobs:
         continue-on-error: true
         run: |
           $ErrorActionPreference = "Continue"
-          $phpExe = "${{ steps.download-php.outputs.php-path }}
+          $phpExe = "${{ steps.download-php.outputs.php-path }}"
           $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
           
           Write-Host "`n=== Phase 2.3: Test Extension Loading ==="

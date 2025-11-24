@@ -285,77 +285,75 @@ jobs:
             exit 1
           }
 
-      - name: Phase 2.1 - Download Extensions
-        id: download-extensions
+      - name: Phase 2.1 - Locate Bundled Extensions
+        id: locate-extensions
         if: steps.verify-php.outputs.success == 'true'
         continue-on-error: true
         run: |
-          $ErrorActionPreference = "Continue"
-          $version = "${{ matrix.version }}"
+          $ErrorActionPreference = "Stop"
+          $phpExe = "${{ steps.download-php.outputs.php-path }}"
           
-          Write-Host "`n=== Phase 2.1: Download Extensions ==="
+          Write-Host "`n=== Phase 2.1: Locate Bundled Extensions ==="
           
-          $extResults = @{}
-          $allSuccess = $true
-          
-          $extsFile = "bin/php$version/exts.properties"
-          if (-not (Test-Path $extsFile)) {
-            Write-Host "⚠️  No exts.properties file found for PHP $version"
-            echo "success=true" >> $env:GITHUB_OUTPUT
-            return
-          }
-          
-          New-Item -ItemType Directory -Force -Path "test-extensions" | Out-Null
-          
-          $content = Get-Content $extsFile
-          foreach ($line in $content) {
-            if ($line -match '^\s*#' -or $line -match '^\s*$') { continue }
+          try {
+            # Get PHP directory and ext subdirectory
+            $phpDir = Split-Path -Parent $phpExe
+            $extDir = Join-Path $phpDir "ext"
             
-            $parts = $line -split '=', 2
-            if ($parts.Count -eq 2) {
-              $extName = $parts[0].Trim()
-              $extUrl = $parts[1].Trim()
-              
-              Write-Host "`n📥 Downloading $extName..."
-              
-              try {
-                $fileName = [System.IO.Path]::GetFileName($extUrl)
-                $downloadPath = Join-Path "test-extensions" $fileName
-                
-                Invoke-WebRequest -Uri $extUrl -OutFile $downloadPath -UseBasicParsing
-                
-                if (Test-Path $downloadPath) {
-                  $fileSize = (Get-Item $downloadPath).Length / 1KB
-                  Write-Host "✅ Downloaded: $fileName ($([math]::Round($fileSize, 2)) KB)"
-                  
-                  if ($fileName -match '\.zip$') {
-                    $extractPath = Join-Path "test-extensions" $extName
-                    Expand-Archive -Path $downloadPath -DestinationPath $extractPath -Force
-                    Write-Host "✅ Extracted to: $extractPath"
-                    $extResults[$extName] = @{ success = $true; path = $extractPath }
-                  } else {
-                    $extResults[$extName] = @{ success = $true; path = $downloadPath }
-                  }
-                } else {
-                  throw "Download failed"
-                }
-              } catch {
-                Write-Host "❌ Failed to download $extName : $_"
-                $extResults[$extName] = @{ success = $false; error = $_.Exception.Message }
-                $allSuccess = $false
+            Write-Host "PHP Directory: $phpDir"
+            Write-Host "Extensions Directory: $extDir"
+            
+            if (-not (Test-Path $extDir)) {
+              Write-Host "❌ ERROR: ext directory not found at: $extDir"
+              Write-Host "Directory contents:"
+              Get-ChildItem -Path $phpDir | ForEach-Object { Write-Host "  $($_.Name)" }
+              echo "success=false" >> $env:GITHUB_OUTPUT
+              echo "error=ext directory not found" >> $env:GITHUB_OUTPUT
+              exit 1
+            }
+            
+            $dllFiles = Get-ChildItem -Path $extDir -Filter "*.dll" -ErrorAction SilentlyContinue
+            
+            if (-not $dllFiles -or $dllFiles.Count -eq 0) {
+              Write-Host "❌ ERROR: No DLL files found in ext directory"
+              echo "success=false" >> $env:GITHUB_OUTPUT
+              echo "error=No extension DLLs found in ext directory" >> $env:GITHUB_OUTPUT
+              exit 1
+            }
+            
+            Write-Host "`n📦 Found $($dllFiles.Count) bundled extensions:"
+            $extResults = @{}
+            foreach ($dll in $dllFiles) {
+              $extName = $dll.BaseName -replace '^php_', ''
+              Write-Host "  - $($dll.Name) ($([math]::Round($dll.Length / 1KB, 2)) KB)"
+              $extResults[$extName] = @{ 
+                success = $true
+                path = $dll.FullName
+                name = $dll.Name
+                size = [math]::Round($dll.Length / 1KB, 2)
               }
             }
+            
+            $extResults | ConvertTo-Json -Depth 10 | Out-File "test-results/extensions.json"
+            
+            Write-Host "`n✅ Successfully located bundled extensions"
+            echo "success=true" >> $env:GITHUB_OUTPUT
+            echo "ext-dir=$extDir" >> $env:GITHUB_OUTPUT
+            
+          } catch {
+            Write-Host "❌ ERROR: $($_.Exception.Message)"
+            echo "success=false" >> $env:GITHUB_OUTPUT
+            echo "error=$($_.Exception.Message)" >> $env:GITHUB_OUTPUT
+            exit 1
           }
-          
-          $extResults | ConvertTo-Json -Depth 10 | Out-File "test-results/extensions.json"
-          echo "success=$allSuccess" >> $env:GITHUB_OUTPUT
 
       - name: Phase 2.2 - Validate DLL Architecture
         id: validate-architecture
-        if: steps.download-extensions.outputs.success == 'true'
+        if: steps.locate-extensions.outputs.success == 'true'
         continue-on-error: true
         run: |
           $ErrorActionPreference = "Continue"
+          $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
           
           Write-Host "`n=== Phase 2.2: Validate DLL Architecture ==="
           
@@ -391,7 +389,7 @@ jobs:
           $archResults = @{}
           $allValid = $true
           
-          $dllFiles = Get-ChildItem -Path "test-extensions" -Filter "*.dll" -Recurse
+          $dllFiles = Get-ChildItem -Path $extDir -Filter "*.dll"
           
           foreach ($dll in $dllFiles) {
             Write-Host "`n🔍 Validating: $($dll.Name)"
@@ -424,14 +422,15 @@ jobs:
         continue-on-error: true
         run: |
           $ErrorActionPreference = "Continue"
-          $phpExe = "${{ steps.download-php.outputs.php-path }}"
+          $phpExe = "${{ steps.download-php.outputs.php-path }}
+          $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
           
           Write-Host "`n=== Phase 2.3: Test Extension Loading ==="
           
           $loadResults = @{}
           $allLoaded = $true
           
-          $dllFiles = Get-ChildItem -Path "test-extensions" -Filter "*.dll" -Recurse
+          $dllFiles = Get-ChildItem -Path $extDir -Filter "*.dll"
           
           foreach ($dll in $dllFiles) {
             $extName = $dll.BaseName -replace '^php_', ''
@@ -544,6 +543,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $phpExe = "${{ steps.download-php.outputs.php-path }}"
+          $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
           
           Write-Host "`n=== Phase 3.2: Test Extensions with Dependencies ==="
           
@@ -556,7 +556,7 @@ jobs:
           $depTestResults = @{}
           $allSuccess = $true
           
-          $imagickDll = Get-ChildItem -Path "test-extensions" -Filter "*imagick*.dll" -Recurse | Select-Object -First 1
+          $imagickDll = Get-ChildItem -Path $extDir -Filter "*imagick*.dll" | Select-Object -First 1
           if ($imagickDll) {
             Write-Host "`n🖼️  Testing imagick with ImageMagick..."
             try {
@@ -578,7 +578,7 @@ jobs:
             }
           }
           
-          $memcacheDll = Get-ChildItem -Path "test-extensions" -Filter "*memcache*.dll" -Recurse | Select-Object -First 1
+          $memcacheDll = Get-ChildItem -Path $extDir -Filter "*memcache*.dll" | Select-Object -First 1
           if ($memcacheDll) {
             Write-Host "`n💾 Testing memcache..."
             try {
@@ -598,7 +598,7 @@ jobs:
             }
           }
           
-          $xdebugDll = Get-ChildItem -Path "test-extensions" -Filter "*xdebug*.dll" -Recurse | Select-Object -First 1
+          $xdebugDll = Get-ChildItem -Path $extDir -Filter "*xdebug*.dll" | Select-Object -First 1
           if ($xdebugDll) {
             Write-Host "`n🐛 Testing xdebug..."
             try {
@@ -630,6 +630,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $phpExe = "${{ steps.download-php.outputs.php-path }}"
+          $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
           
           Write-Host "`n=== Phase 4: Functional Testing ==="
           
@@ -641,7 +642,7 @@ jobs:
           $funcResults = @{}
           $allSuccess = $true
           
-          $imagickDll = Get-ChildItem -Path "test-extensions" -Filter "*imagick*.dll" -Recurse | Select-Object -First 1
+          $imagickDll = Get-ChildItem -Path $extDir -Filter "*imagick*.dll" | Select-Object -First 1
           if ($imagickDll) {
             Write-Host "`n🖼️  Testing imagick functionality..."
             try {
@@ -663,7 +664,7 @@ jobs:
             }
           }
           
-          $memcacheDll = Get-ChildItem -Path "test-extensions" -Filter "*memcache*.dll" -Recurse | Select-Object -First 1
+          $memcacheDll = Get-ChildItem -Path $extDir -Filter "*memcache*.dll" | Select-Object -First 1
           if ($memcacheDll) {
             Write-Host "`n💾 Testing memcache functionality..."
             try {
@@ -683,7 +684,7 @@ jobs:
             }
           }
           
-          $xdebugDll = Get-ChildItem -Path "test-extensions" -Filter "*xdebug*.dll" -Recurse | Select-Object -First 1
+          $xdebugDll = Get-ChildItem -Path $extDir -Filter "*xdebug*.dll" | Select-Object -First 1
           if ($xdebugDll) {
             Write-Host "`n🐛 Testing xdebug functionality..."
             try {
@@ -718,7 +719,7 @@ jobs:
           
           $phase1_1 = "${{ steps.download-php.outputs.success }}" -eq "true"
           $phase1_2 = "${{ steps.verify-php.outputs.success }}" -eq "true"
-          $phase2_1 = "${{ steps.download-extensions.outputs.success }}" -eq "true"
+          $phase2_1 = "${{ steps.locate-extensions.outputs.success }}" -eq "true"
           $phase2_2 = "${{ steps.validate-architecture.outputs.success }}" -eq "true"
           $phase2_3 = "${{ steps.test-loading.outputs.success }}" -eq "true"
           $phase3_1 = "${{ steps.download-dependencies.outputs.success }}" -eq "true"
@@ -744,7 +745,7 @@ jobs:
           
           if ($phase1_2) {
             $summary += "**Phase 2: Extension Validation**`n"
-            $summary += "- Download Extensions: $(if ($phase2_1) { '✅ PASS' } else { '❌ FAIL' })`n"
+            $summary += "- Locate Extensions: $(if ($phase2_1) { '✅ PASS' } else { '❌ FAIL' })`n"
             if ($phase2_1) {
               $summary += "- Validate Architecture: $(if ($phase2_2) { '✅ PASS' } else { '❌ FAIL' })`n"
               if ($phase2_2) {

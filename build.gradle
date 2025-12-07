@@ -796,11 +796,311 @@ tasks.register('releaseInteractive') {
     }
 }
 
+// Task: Fetch and update dependencies from modules-untouched
+tasks.register('fetch') {
+    group = 'build'
+    description = 'Fetch latest dependencies and update configuration files'
+    dependsOn 'resolveVersion'
+
+    // Capture version at configuration time
+    def versionProvider = providers.provider {
+        def fromProp = project.findProperty('bundleVersion') as String
+        if (fromProp) return fromProp
+        def propsFile = file("${buildTmpPath}/.gradle-bundleVersion")
+        if (propsFile.exists()) {
+            return propsFile.text.trim()
+        }
+        return null
+    }
+
+    doLast {
+        def versionToBuild = versionProvider.getOrNull()
+        if (!versionToBuild) {
+            throw new GradleException("bundleVersion property not set")
+        }
+
+        println "=".multiply(70)
+        println "[fetch] Fetching latest dependencies for PHP ${versionToBuild}..."
+        println "=".multiply(70)
+        println ""
+
+        // Step 1: Update build.properties with today's date
+        println "[fetch] Step 1: Updating build.properties with current date..."
+        def buildPropsFile = file('build.properties')
+        def buildPropsContent = buildPropsFile.text
+        def today = new Date().format('yyyy.MM.dd')
+        buildPropsContent = buildPropsContent.replaceAll(/bundle\.release\s*=\s*\d{4}\.\d{2}\.\d{2}/, "bundle.release = ${today}")
+        buildPropsFile.text = buildPropsContent
+        println "[fetch]   ✓ Updated bundle.release to ${today}"
+        println ""
+
+        // Extract major.minor version (e.g., 8.4 from 8.4.15)
+        def versionParts = versionToBuild.split('\\.')
+        def majorMinor = "${versionParts[0]}.${versionParts[1]}"
+        println "[fetch] PHP Version: ${versionToBuild} (major.minor: ${majorMinor})"
+        println ""
+
+        // Resolve bundle path
+        def bundlePath = new File(projectDir, "bin/${bundleName}${versionToBuild}")
+        if (!bundlePath.exists()) {
+            def archivedPath = new File(projectDir, "bin/archived/${bundleName}${versionToBuild}")
+            if (archivedPath.exists()) {
+                bundlePath = archivedPath
+            } else {
+                throw new GradleException("Bundle folder not found: ${bundleName}${versionToBuild}")
+            }
+        }
+
+        // Step 2: Get release tag from php.properties
+        println "[fetch] Step 2: Getting release tag from php.properties..."
+        
+        def untouchedProps = fetchModulesUntouchedProperties()
+        if (!untouchedProps) {
+            throw new GradleException("Could not fetch php.properties from modules-untouched")
+        }
+        
+        def phpUrl = untouchedProps.getProperty(versionToBuild)
+        if (!phpUrl) {
+            throw new GradleException("PHP version ${versionToBuild} not found in php.properties")
+        }
+        
+        println "[fetch]   ✓ Found PHP ${versionToBuild} in php.properties"
+        println "[fetch]   URL: ${phpUrl}"
+        
+        // Extract release tag from URL (e.g., php-2025.12.7 from .../releases/download/php-2025.12.7/...)
+        def releaseTagMatcher = phpUrl =~ /\/releases\/download\/(php-\d{4}\.\d{1,2}\.\d{1,2})\//
+        if (!releaseTagMatcher.find()) {
+            throw new GradleException("Could not extract release tag from PHP URL: ${phpUrl}")
+        }
+        
+        def releaseTag = releaseTagMatcher.group(1)
+        println "[fetch]   ✓ Extracted release tag: ${releaseTag}"
+        
+        // Fetch release assets from GitHub API
+        println "[fetch]   Fetching release assets from GitHub..."
+        
+        def githubToken = project.findProperty('github.token') ?: System.getenv('GH_PAT')
+        def apiUrl = "https://api.github.com/repos/Bearsampp/modules-untouched/releases/tags/${releaseTag}"
+        
+        def connection = new URL(apiUrl).openConnection()
+        if (githubToken) {
+            connection.setRequestProperty("Authorization", "token ${githubToken}")
+        }
+        connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+        
+        def response = connection.inputStream.text
+        def slurper = new groovy.json.JsonSlurper()
+        def release = slurper.parseText(response)
+        
+        def assets = release.assets
+        
+        println "[fetch]   ✓ Release: ${releaseTag}"
+        println "[fetch]   ✓ Assets: ${assets.size()} files"
+        println ""
+
+        // Step 3: Search for dependencies
+        println "[fetch] Step 3: Searching for dependencies..."
+        
+        def updates = [:]
+        def warnings = []
+        
+        // Helper to find asset by pattern
+        def findAsset = { pattern ->
+            return assets.find { asset -> asset.name =~ pattern }
+        }
+        
+        // Helper to construct URL
+        def constructUrl = { assetName ->
+            return "https://github.com/Bearsampp/modules-untouched/releases/download/${releaseTag}/${assetName}"
+        }
+        
+        // Search for ImageMagick
+        def imagickAsset = findAsset(/ImageMagick-.*-portable-Q16-HDRI-x64\.7z/)
+        if (imagickAsset) {
+            updates['imagemagick'] = constructUrl(imagickAsset.name)
+            println "[fetch]   ✓ Found ImageMagick: ${imagickAsset.name}"
+        } else {
+            warnings.add("ImageMagick not found")
+        }
+        
+        // Search for php_imagick
+        def phpImagickAsset = findAsset(/php_imagick-.*-${majorMinor}-ts-vs17-x64\.zip/)
+        if (phpImagickAsset) {
+            updates['imagick'] = constructUrl(phpImagickAsset.name)
+            println "[fetch]   ✓ Found php_imagick: ${phpImagickAsset.name}"
+        } else {
+            warnings.add("php_imagick for PHP ${majorMinor} not found")
+        }
+        
+        // Search for memcache
+        def memcacheAsset = findAsset(/php-${majorMinor}\.x_memcache\.dll/)
+        if (memcacheAsset) {
+            updates['memcache'] = constructUrl(memcacheAsset.name)
+            println "[fetch]   ✓ Found memcache: ${memcacheAsset.name}"
+        } else {
+            warnings.add("memcache for PHP ${majorMinor} not found")
+        }
+        
+        // Search for xdebug
+        def xdebugAsset = findAsset(/php_xdebug-.*-${majorMinor}-ts-vs17-x86_64\.(dll|zip)/)
+        if (xdebugAsset) {
+            updates['xdebug'] = constructUrl(xdebugAsset.name)
+            println "[fetch]   ✓ Found xdebug: ${xdebugAsset.name}"
+        } else {
+            warnings.add("xdebug for PHP ${majorMinor} not found")
+        }
+        
+        // Search for PEAR
+        def pearAsset = findAsset(/pearweb_phars-.*\.(tgz|zip)/)
+        if (pearAsset) {
+            updates['pear'] = constructUrl(pearAsset.name)
+            println "[fetch]   ✓ Found PEAR: ${pearAsset.name}"
+        } else {
+            warnings.add("PEAR not found")
+        }
+        
+        println ""
+        
+        if (!warnings.isEmpty()) {
+            println "[fetch] Warnings:"
+            warnings.each { warning ->
+                println "[fetch]   ⚠ ${warning}"
+            }
+            println ""
+        }
+        
+        // Step 4: Update configuration files
+        println "[fetch] Step 4: Updating configuration files..."
+        
+        def filesUpdated = 0
+        
+        // Helper to update properties file
+        def updatePropertiesFile = { File file, Map<String, String> updatesMap ->
+            def lines = file.readLines()
+            def updated = false
+            
+            updatesMap.each { key, value ->
+                def escapedValue = value.replace('\\', '\\\\').replace(':', '\\:').replace('=', '\\=')
+                
+                for (int i = 0; i < lines.size(); i++) {
+                    def line = lines[i]
+                    if (line.trim().startsWith('#') || line.trim().isEmpty()) {
+                        continue
+                    }
+                    
+                    if (line =~ /^${java.util.regex.Pattern.quote(key)}\s*[=:]/) {
+                        lines[i] = "${key}=${escapedValue}"
+                        updated = true
+                        break
+                    }
+                }
+            }
+            
+            if (updated) {
+                file.text = lines.join('\n') + '\n'
+            }
+            
+            return updated
+        }
+        
+        // Update bearsampp.conf
+        def bearsamppConf = new File(bundlePath, 'bearsampp.conf')
+        if (bearsamppConf.exists()) {
+            def content = bearsamppConf.text
+            def oldContent = content
+            content = content.replaceAll(/phpVersion\s*=\s*"[^"]*"/, "phpVersion = \"${versionToBuild}\"")
+            if (content != oldContent) {
+                bearsamppConf.text = content
+                println "[fetch]   ✓ bearsampp.conf (phpVersion updated)"
+                filesUpdated++
+            }
+        }
+        
+        // Update deps.properties
+        def depsProps = new File(bundlePath, 'deps.properties')
+        if (depsProps.exists() && updates.containsKey('imagemagick')) {
+            if (updatePropertiesFile(depsProps, [imagemagick: updates['imagemagick']])) {
+                println "[fetch]   ✓ deps.properties (imagemagick updated)"
+                filesUpdated++
+            }
+        }
+        
+        // Update exts.properties
+        def extsProps = new File(bundlePath, 'exts.properties')
+        if (extsProps.exists()) {
+            def extsUpdates = [:]
+            if (updates.containsKey('imagick')) extsUpdates['imagick'] = updates['imagick']
+            if (updates.containsKey('memcache')) extsUpdates['memcache'] = updates['memcache']
+            if (updates.containsKey('xdebug')) extsUpdates['xdebug'] = updates['xdebug']
+            
+            if (!extsUpdates.isEmpty()) {
+                if (updatePropertiesFile(extsProps, extsUpdates)) {
+                    println "[fetch]   ✓ exts.properties (${extsUpdates.size()} extensions updated)"
+                    filesUpdated++
+                }
+            }
+        }
+        
+        // Update pear.properties
+        def pearProps = new File(bundlePath, 'pear.properties')
+        if (pearProps.exists() && updates.containsKey('pear')) {
+            if (updatePropertiesFile(pearProps, [pear: updates['pear']])) {
+                println "[fetch]   ✓ pear.properties (pear updated)"
+                filesUpdated++
+            }
+        }
+        
+        // Update php.ini
+        def phpIni = new File(bundlePath, 'php.ini')
+        if (phpIni.exists()) {
+            def content = phpIni.text
+            def oldContent = content
+            
+            content = content.replaceAll(
+                /include_path\s*=\s*"\.;~BEARSAMPP_LIN_PATH~\/bin\/php\/php[^\/]*\/pear\/pear"/,
+                "include_path=\".;~BEARSAMPP_LIN_PATH~/bin/php/php${versionToBuild}/pear/pear\""
+            )
+            
+            content = content.replaceAll(
+                /extension_dir\s*=\s*"~BEARSAMPP_LIN_PATH~\/bin\/php\/php[^\/]*\/ext"/,
+                "extension_dir = \"~BEARSAMPP_LIN_PATH~/bin/php/php${versionToBuild}/ext\""
+            )
+            
+            content = content.replaceAll(
+                /zend_extension\s*=\s*"~BEARSAMPP_LIN_PATH~\/bin\/php\/php[^\/]*\/ext\/php_opcache\.dll"/,
+                "zend_extension = \"~BEARSAMPP_LIN_PATH~/bin/php/php${versionToBuild}/ext/php_opcache.dll\""
+            )
+            
+            if (content != oldContent) {
+                phpIni.text = content
+                println "[fetch]   ✓ php.ini (3 paths updated)"
+                filesUpdated++
+            }
+        }
+        
+        println ""
+        println "=".multiply(70)
+        println "[fetch] Configuration update complete!"
+        println "=".multiply(70)
+        println ""
+        println "[fetch] Summary:"
+        println "[fetch]   - PHP Version: ${versionToBuild}"
+        println "[fetch]   - Bundle Release: ${today}"
+        println "[fetch]   - Latest Release: ${releaseTag}"
+        println "[fetch]   - Files Updated: ${filesUpdated}"
+        println "[fetch]   - Dependencies Found: ${updates.size()}"
+        if (!warnings.isEmpty()) {
+            println "[fetch]   - Warnings: ${warnings.size()}"
+        }
+        println ""
+    }
+}
+
 // Task: Actual release build logic
 tasks.register('releaseBuild') {
     group = 'build'
     description = 'Execute the release build process'
-    dependsOn 'resolveVersion'
+    dependsOn 'resolveVersion', 'fetch'
 
     // Capture version at configuration time to avoid deprecation warnings
     def versionProvider = providers.provider {

@@ -932,8 +932,8 @@ tasks.register('fetch') {
             warnings.add("php_imagick for PHP ${majorMinor} not found")
         }
         
-        // Search for memcache
-        def memcacheAsset = findAsset(/php-${majorMinor}\.x_memcache\.dll/)
+        // Search for memcache (format: php_memcache-X.X-8.3-ts-vsXX-x64.zip)
+        def memcacheAsset = findAsset(/php_memcache-.*-${majorMinor}-ts-vs\d+-x64\.zip/)
         if (memcacheAsset) {
             updates['memcache'] = constructUrl(memcacheAsset.name)
             println "[fetch]   ✓ Found memcache: ${memcacheAsset.name}"
@@ -980,7 +980,9 @@ tasks.register('fetch') {
             def updated = false
             
             updatesMap.each { key, value ->
-                def escapedValue = value.replace('\\', '\\\\').replace(':', '\\:').replace('=', '\\=')
+                // Don't escape colons in URLs - keep them readable
+                // Only escape backslashes and equals signs
+                def escapedValue = value.replace('\\', '\\\\').replace('=', '\\=')
                 
                 for (int i = 0; i < lines.size(); i++) {
                     def line = lines[i]
@@ -1561,20 +1563,31 @@ def processExtensions(File extsFile, File phpPrepPath) {
 
 // Helper: Validate DLL architecture (uses ProcessBuilder instead of exec)
 def validateDllArchitecture(File dll) {
+    // Use single quotes in PowerShell to avoid variable expansion issues
+    def dllPath = dll.absolutePath.replace('\\', '\\\\')
     def psCommand = """
 try {
-    \$bytes = [System.IO.File]::ReadAllBytes('${dll.absolutePath.replace('\\', '\\\\')}');
-    \$peOffset = [System.BitConverter]::ToInt32(\$bytes, 60);
-    \$machineType = [System.BitConverter]::ToUInt16(\$bytes, \$peOffset + 4);
+    \$dllPath = '${dllPath}'
+    if (-not (Test-Path \$dllPath)) {
+        Write-Output 'Error: File not found'
+        exit 1
+    }
+    \$bytes = [System.IO.File]::ReadAllBytes(\$dllPath)
+    if (\$bytes.Length -lt 64) {
+        Write-Output 'Error: File too small to be a valid DLL'
+        exit 1
+    }
+    \$peOffset = [System.BitConverter]::ToInt32(\$bytes, 60)
+    \$machineType = [System.BitConverter]::ToUInt16(\$bytes, \$peOffset + 4)
     if (\$machineType -eq 0x8664) {
         Write-Output '64-bit'
     } elseif (\$machineType -eq 0x014c) {
         Write-Output '32-bit'
     } else {
-        Write-Output 'Unknown'
+        Write-Output "Unknown architecture: 0x\$(\$machineType.ToString('X4'))"
     }
 } catch {
-    Write-Output 'Error'
+    Write-Output "Error: \$(\$_.Exception.Message)"
 }
 """.trim()
 
@@ -1599,7 +1612,7 @@ try {
     def result = output.toString().trim()
 
     if (!result.contains('64-bit')) {
-        throw new GradleException("DLL ${dll.name} is not 64-bit architecture. Result: ${result}")
+        throw new GradleException("DLL ${dll.name} is not 64-bit architecture. Result: ${result}\nFile: ${dll.absolutePath}")
     }
 }
 
@@ -1615,29 +1628,90 @@ def processPear(File pearFile, File phpPrepPath) {
         into pearInstallDir
     }
 
-    // Download PEAR phar
-    def pearUrl = pear.getProperty('phppear.pear')
+    // Download PEAR archive (property key is 'pear', not 'phppear.pear')
+    def pearUrl = pear.getProperty('pear')
     if (!pearUrl) {
-        println "  [WARNING] PEAR URL not found in pear.properties (phppear.pear property is missing or empty)"
+        println "  [WARNING] PEAR URL not found in pear.properties"
         println "  Skipping PEAR installation"
         delete pearInstallDir
         return
     }
 
-    def pearPhar = downloadFile(pearUrl, pearInstallDir)
+    println "  Downloading PEAR from: ${pearUrl}"
+    def pearArchive = downloadFile(pearUrl, pearInstallDir)
 
+    // Extract the archive (it's a .tgz file)
+    println "  Extracting PEAR archive..."
+    def extractDir = new File(pearInstallDir, 'extracted')
+    extractDir.mkdirs()
+    
+    // Extract .tgz using tar (Windows 10+ has built-in tar support)
+    def tarCommand = [
+        'tar',
+        '-xzf',
+        pearArchive.absolutePath,
+        '-C',
+        extractDir.absolutePath
+    ]
+    
+    def process = new ProcessBuilder(tarCommand as String[])
+        .redirectErrorStream(true)
+        .start()
+    
+    def output = new StringBuilder()
+    process.inputStream.eachLine { line ->
+        output.append(line).append('\n')
+    }
+    
+    def exitCode = process.waitFor()
+    if (exitCode != 0) {
+        throw new GradleException("Failed to extract PEAR archive: ${output}")
+    }
+
+    // Find the .phar file in the extracted directory (it's in a subfolder)
+    def pharFile = null
+    extractDir.eachFileRecurse { file ->
+        if (file.name.endsWith('.phar')) {
+            pharFile = file
+        }
+    }
+    
+    if (!pharFile) {
+        throw new GradleException("Could not find .phar file in PEAR archive")
+    }
+    
+    println "  Found PEAR phar: ${pharFile.name}"
+
+    // Copy the phar file to pear-install directory
     copy {
-        from pearPhar
+        from pharFile
         into pearInstallDir
         rename { 'install-pear-nozlib.phar' }
     }
 
     // Execute PEAR installation
     println "  Installing PEAR..."
-    exec {
-        executable 'cmd'
-        args '/c', 'pear-install.bat'
-        workingDir pearInstallDir
+    
+    def pearCommand = [
+        'cmd',
+        '/c',
+        'pear-install.bat'
+    ]
+    
+    def pearProcess = new ProcessBuilder(pearCommand as String[])
+        .directory(pearInstallDir)
+        .redirectErrorStream(true)
+        .start()
+    
+    def pearOutput = new StringBuilder()
+    pearProcess.inputStream.eachLine { line ->
+        println "    ${line}"
+        pearOutput.append(line).append('\n')
+    }
+    
+    def pearExitCode = pearProcess.waitFor()
+    if (pearExitCode != 0) {
+        throw new GradleException("PEAR installation failed with exit code: ${pearExitCode}\nOutput: ${pearOutput}")
     }
 
     // Cleanup

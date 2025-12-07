@@ -730,6 +730,7 @@ tasks.register('release') {
     description = 'Build release package (interactive by default; -PbundleVersion=* or X.Y.Z for non-interactive)'
 
     // Always clean before building to ensure fresh build
+    // Note: fetch task is NOT included by default - run it separately if you want to update dependencies
     dependsOn 'clean', 'resolveVersion', 'packageRelease'
 }
 
@@ -1291,10 +1292,7 @@ tasks.register('releaseBuild') {
         }
         println "Build output: ${phpBuildPath}"
 
-        // Store the archive info for final message
-        // Note: Using extensions.extraProperties to avoid Task.project deprecation
-        extensions.extraProperties.set('preparedBundlePath', phpPrepPath.absolutePath)
-        extensions.extraProperties.set('buildOutputPath', phpBuildPath.absolutePath)
+        // Note: We don't need to store these paths anymore since they're printed above
     }
 }
 

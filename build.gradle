@@ -403,10 +403,10 @@ def fetchModulesUntouchedProperties() {
         def props = new Properties()
         tempFile.withInputStream { props.load(it) }
 
-        println "  ✓ Successfully loaded ${props.size()} versions from modules-untouched"
+        println "  [OK] Successfully loaded ${props.size()} versions from modules-untouched"
         return props
     } catch (Exception e) {
-        println "  ✗ Warning: Could not fetch php.properties from modules-untouched: ${e.message}"
+        println "  [WARN] Could not fetch php.properties from modules-untouched: ${e.message}"
         println "  Will fall back to standard URL format if needed"
         return null
     }
@@ -452,9 +452,9 @@ def downloadFromModulesUntouched(String version, File destDir) {
                 output << input
             }
         }
-        println "  ✓ Downloaded: ${downloadedFile.name}"
+        println "  [OK] Downloaded: ${downloadedFile.name}"
     } else {
-        println "  ✓ Already downloaded: ${downloadedFile.name}"
+        println "  [OK] Already downloaded: ${downloadedFile.name}"
     }
 
     return downloadedFile
@@ -1610,15 +1610,22 @@ def processExtensions(File extsFile, File phpPrepPath) {
         }
     }
 
-    // Update php.ini with extensions
-    def phpIniTemplate = new File(phpPrepPath.parentFile.parentFile.parentFile, "bin/${phpPrepPath.name}/php.ini")
-    if (phpIniTemplate.exists()) {
-        def phpIniContent = phpIniTemplate.text
-        phpIniContent = phpIniContent.replace('@PHP_EXTENSIONS@', extensionsText.toString())
-
-        def phpIniDest = new File(phpPrepPath, 'php.ini')
-        phpIniDest.text = phpIniContent
-        println "  Updated php.ini with extensions"
+    // Update php.ini with extensions - replace @PHP_EXTENSIONS@ placeholder
+    def phpIniFile = new File(phpPrepPath, 'php.ini')
+    if (phpIniFile.exists()) {
+        def phpIniContent = phpIniFile.text
+        
+        // Replace the @PHP_EXTENSIONS@ placeholder with actual extension entries
+        if (phpIniContent.contains('@PHP_EXTENSIONS@')) {
+            phpIniContent = phpIniContent.replace('@PHP_EXTENSIONS@', extensionsText.toString())
+            phpIniFile.text = phpIniContent
+            println "  Updated php.ini with ${exts.size()} extensions"
+        } else {
+            println "  WARNING: @PHP_EXTENSIONS@ placeholder not found in php.ini"
+            println "  Extensions may need to be added manually"
+        }
+    } else {
+        println "  WARNING: php.ini not found at ${phpIniFile}"
     }
 }
 

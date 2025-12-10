@@ -21,15 +21,81 @@ gradle tasks
 # Verify build environment
 gradle verify
 
-# Build a release (interactive)
+# Build a release (interactive) - automatically fetches latest dependencies
 gradle release
 
 # Build a specific version (non-interactive)
 gradle release -PbundleVersion=8.3.15
 
+# Update dependencies only (without building)
+gradle fetch -PbundleVersion=8.3.15
+
 # Clean build artifacts
 gradle clean
 ```
+
+### Creating a New PHP Version Build
+
+When a new PHP version is released, follow these steps:
+
+1. **Create version directory structure**:
+   ```bash
+   mkdir bin/php8.4.16
+   ```
+
+2. **Copy configuration files** from a similar version:
+   ```bash
+   # Copy from previous version
+   cp bin/php8.4.15/* bin/php8.4.16/
+   ```
+
+3. **Build the release** (fetch is automatic):
+   ```bash
+   gradle release -PbundleVersion=8.4.16
+   ```
+   
+   The `release` task automatically runs `fetch` which will:
+   - ✅ Update `build.properties` with today's date
+   - ✅ Fetch the latest release tag from `modules-untouched` repository
+   - ✅ Find and update ImageMagick, php_imagick, memcache, xdebug, and PEAR URLs
+   - ✅ Update `bearsampp.conf` with the new PHP version
+   - ✅ Update `deps.properties`, `exts.properties`, and `pear.properties`
+   - ✅ Update version-specific paths in `php.ini`
+   - ✅ Download PHP binaries and dependencies
+   - ✅ Build and package the release
+
+4. **Review the updated files** in `bin/php8.4.16/`:
+   - `bearsampp.conf` - PHP version updated
+   - `exts.properties` - Extension URLs updated
+   - `deps.properties` - Dependency URLs updated
+   - `pear.properties` - PEAR URL updated
+   - `php.ini` - Version-specific paths updated
+
+5. **Commit the changes** to git:
+   ```bash
+   git add bin/php8.4.16/
+   git commit -m "Add PHP 8.4.16 configuration"
+   ```
+
+> **Note**: The `fetch` task is automatically included in the `release` build process. You only need to run `gradle fetch` separately if you want to update dependency URLs without building a release.
+
+### How the Fetch Task Works
+
+The `fetch` task integrates with the [Bearsampp modules-untouched](https://github.com/Bearsampp/modules-untouched) repository:
+
+1. **Reads `php.properties`** from modules-untouched to get the PHP download URL
+2. **Extracts the release tag** (e.g., `php-2025.12.7`) from the URL
+3. **Queries GitHub API** to get all assets from that release
+4. **Pattern matches** to find the latest versions of:
+   - ImageMagick (portable Q16-HDRI x64)
+   - php_imagick (matching PHP major.minor version)
+   - php_memcache (matching PHP major.minor version)
+   - php_xdebug (matching PHP major.minor version)
+   - PEAR (pearweb_phars)
+5. **Updates configuration files** with the new URLs
+6. **Updates version-specific paths** in php.ini
+
+This ensures all dependencies are automatically synchronized with the latest compatible versions from the modules-untouched releases.
 
 ### Prerequisites
 
@@ -45,6 +111,7 @@ gradle clean
 | Task                  | Description                                      |
 |-----------------------|--------------------------------------------------|
 | `release`             | Build release package (interactive/non-interactive) |
+| `fetch`               | Fetch and update dependencies from modules-untouched |
 | `clean`               | Clean build artifacts and temporary files        |
 | `verify`              | Verify build environment and dependencies        |
 | `info`                | Display build configuration information          |

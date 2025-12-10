@@ -1580,18 +1580,18 @@ def processExtensions(File extsFile, File phpPrepPath) {
         println "    Validating architecture..."
         validateDllArchitecture(mainDll)
 
-        // Copy extension DLL
+        // Copy extension DLL with proper naming
         def destDll = new File(phpPrepPath, "ext/php_${extName}.dll")
         destDll.parentFile.mkdirs()
         copy {
             from mainDll
             into destDll.parentFile
-            // Rename versioned xdebug DLL to standard name
-            if (extName == 'xdebug' && mainDll.name != "php_${extName}.dll") {
+            // Rename to standard php_<extname>.dll format if needed
+            if (mainDll.name != "php_${extName}.dll") {
                 rename { "php_${extName}.dll" }
             }
         }
-        println "    Copied: ${destDll.name}"
+        println "    Copied: ${destDll.name} (from ${mainDll.name})"
 
         // Handle special cases (e.g., imagick)
         if (extName == 'imagick') {

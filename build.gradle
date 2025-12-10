@@ -863,16 +863,6 @@ tasks.register('fetch') {
         println "=" * 70
         println ""
 
-        // Step 1: Update build.properties with today's date
-        printInfo "Step 1: Updating build.properties with current date..."
-        def buildPropsFile = file('build.properties')
-        def buildPropsContent = buildPropsFile.text
-        def today = new Date().format('yyyy.MM.dd')
-        buildPropsContent = buildPropsContent.replaceAll(/bundle\.release\s*=\s*\d{4}\.\d{2}\.\d{2}/, "bundle.release = ${today}")
-        buildPropsFile.text = buildPropsContent
-        printOk "Updated bundle.release to ${today}"
-        println ""
-
         // Extract major.minor version (e.g., 8.4 from 8.4.15)
         def versionParts = versionToBuild.split('\\.')
         def majorMinor = "${versionParts[0]}.${versionParts[1]}"
@@ -1137,7 +1127,6 @@ tasks.register('fetch') {
         println ""
         printInfo "Summary:"
         printInfo "  - PHP Version: ${versionToBuild}"
-        printInfo "  - Bundle Release: ${today}"
         printInfo "  - Release Tag: ${releaseTag}"
         printInfo "  - Files Updated: ${filesUpdated}"
         printInfo "  - Dependencies Found: ${updates.size()}"
@@ -1443,10 +1432,98 @@ tasks.register('packageRelease') {
     dependsOn archiveFormat == '7z' ? 'packageRelease7z' : 'packageReleaseZip'
 }
 
+// Task: Test PHP extensions
+tasks.register('testExtensions') {
+    group = 'verification'
+    description = 'Verify PHP extension DLLs exist and are valid'
+    dependsOn 'releaseBuild'
+
+    doLast {
+        def versionToBuild = bundleVersionProvider.getOrNull()
+        if (!versionToBuild) {
+            throw new GradleException("bundleVersion property not set")
+        }
+
+        def bundleFolder = "${bundleName}${versionToBuild}"
+        def phpBuildPath = file("${bundleTmpBuildPath}/${bundleFolder}")
+        
+        if (!phpBuildPath.exists()) {
+            println "  [SKIP] Build path not found: ${phpBuildPath}"
+            return
+        }
+
+        println ""
+        println "=".multiply(70)
+        println "Verifying PHP Extensions"
+        println "=".multiply(70)
+        println ""
+
+        // Get expected extensions from exts.properties
+        def bundlePath = new File(projectDir, "bin/${bundleName}${versionToBuild}")
+        if (!bundlePath.exists()) {
+            bundlePath = new File(projectDir, "bin/archived/${bundleName}${versionToBuild}")
+        }
+        
+        def extsFile = new File(bundlePath, 'exts.properties')
+        def expectedExtensions = []
+        
+        if (extsFile.exists()) {
+            def exts = new Properties()
+            extsFile.withInputStream { exts.load(it) }
+            exts.each { key, url ->
+                def extName = key.toString()
+                expectedExtensions.add(extName)
+            }
+        }
+
+        // Verify that extension DLLs exist and are valid
+        def allPassed = true
+        def missingExtensions = []
+        println "Checking extension DLLs:"
+        expectedExtensions.each { extName ->
+            def dllFile = new File(phpBuildPath, "ext/php_${extName}.dll")
+            def exists = dllFile.exists()
+            
+            if (exists) {
+                // Verify it's a valid 64-bit DLL
+                try {
+                    validateDllArchitecture(dllFile)
+                    println "  [PASS] ${extName} (${dllFile.name})"
+                } catch (Exception e) {
+                    println "  [FAIL] ${extName} - Invalid DLL: ${e.message}"
+                    allPassed = false
+                    missingExtensions.add(extName)
+                }
+            } else {
+                println "  [FAIL] ${extName} - DLL not found"
+                allPassed = false
+                missingExtensions.add(extName)
+            }
+        }
+        println ""
+
+        // Store results for final summary
+        def testResultsFile = file("${buildTmpPath}/.gradle-extensionTest")
+        testResultsFile.parentFile.mkdirs()
+        testResultsFile.text = "${allPassed}\n${expectedExtensions.size()},${expectedExtensions.size()}"
+        
+        if (allPassed) {
+            println "Verified ${expectedExtensions.size()} extension DLLs - All present and valid"
+        } else {
+            println "Verified ${expectedExtensions.size()} extension DLLs - ${missingExtensions.size()} issues: ${missingExtensions.join(', ')}"
+        }
+        println ""
+        println "Note: Extensions will be tested for loading when deployed in Bearsampp environment"
+        println "=".multiply(70)
+        println ""
+    }
+}
+
 // Task: Generate hash files for the produced archive (.md5, .sha1, .sha256, .sha512)
 tasks.register('generateHashes') {
     group = 'build'
     description = 'Generate hash sidecar files for the packaged archive'
+    dependsOn 'testExtensions'
 
     doLast {
         def versionToBuild = bundleVersionProvider.getOrNull()
@@ -1483,16 +1560,44 @@ tasks.register('generateHashes') {
         writeHash('SHA-256', 'sha256')
         writeHash('SHA-512', 'sha512')
 
+        // Read test results
+        def testResultsFile = file("${buildTmpPath}/.gradle-extensionTest")
+        def testPassed = true
+        def expectedCount = 0
+        
+        if (testResultsFile.exists()) {
+            def lines = testResultsFile.text.split('\n')
+            testPassed = lines[0] == 'true'
+            if (lines.size() > 1) {
+                def parts = lines[1].split(',')
+                expectedCount = parts[0].toInteger()
+            }
+        }
+
         // Print final success message
         println ""
         println "=".multiply(70)
-        println "[SUCCESS] Release build completed successfully for version ${versionToBuild}"
+        
+        if (testPassed) {
+            println "[SUCCESS] Release build completed successfully for version ${versionToBuild}"
+        } else {
+            println "[WARNING] Release build completed with extension issues for version ${versionToBuild}"
+        }
+        
         println ""
         println "Build directories:"
         println "  Temp prep:   ${file("${bundleTmpPrepPath}/${bundleName}${versionToBuild}").absolutePath}"
         println "  Build output: ${file("${bundleTmpBuildPath}/${bundleName}${versionToBuild}").absolutePath}"
         println ""
         println "Archive: ${new File(externalOutputDir, "bearsampp-${bundleName}-${versionToBuild}-${bundleRelease}").absolutePath}.${extFormat}"
+        
+        if (expectedCount > 0) {
+            println ""
+            println "Extension Verification:"
+            println "  Verified: ${expectedCount}"
+            println "  Status:   ${testPassed ? '[PASS] All extension DLLs present and valid' : '[FAIL] Some extension DLLs missing or invalid'}"
+        }
+        
         println "=".multiply(70)
     }
 }

@@ -1659,12 +1659,13 @@ def processExtensions(File extsFile, File phpPrepPath) {
             extractArchive(extArchive, extDir)
 
             // Find the main DLL in extracted files (recursively search all subdirectories)
-            // For xdebug, the DLL name includes version info (e.g., php_xdebug-3.5.0-8.3-ts-vs16-x86_64.dll)
+            // For xdebug and imagick, the DLL name includes version info (e.g., php_xdebug-3.5.0-8.3-ts-vs16-x86_64.dll)
             extDir.eachFileRecurse { file ->
                 if (file.isFile()) {
-                    // Match exact name or versioned name (for xdebug)
+                    // Match exact name or versioned name (for xdebug and imagick)
                     if (file.name == "php_${extName}.dll" || 
-                        (extName == 'xdebug' && file.name =~ /php_xdebug-.*\.dll/)) {
+                        (extName == 'xdebug' && file.name =~ /php_xdebug-.*\.dll/) ||
+                        (extName == 'imagick' && file.name =~ /php_imagick-.*\.dll/)) {
                         mainDll = file
                     }
                 }
@@ -1813,53 +1814,65 @@ def processPear(File pearFile, File phpPrepPath) {
     println "  Downloading PEAR from: ${pearUrl}"
     def pearArchive = downloadFile(pearUrl, pearInstallDir)
 
-    // Extract the archive (it's a .tgz file)
-    println "  Extracting PEAR archive..."
-    def extractDir = new File(pearInstallDir, 'extracted')
-    extractDir.mkdirs()
-
-    // Extract .tgz using tar (Windows 10+ has built-in tar support)
-    def tarCommand = [
-        'tar',
-        '-xzf',
-        pearArchive.absolutePath,
-        '-C',
-        extractDir.absolutePath
-    ]
-
-    def process = new ProcessBuilder(tarCommand as String[])
-        .redirectErrorStream(true)
-        .start()
-
-    def output = new StringBuilder()
-    process.inputStream.eachLine { line ->
-        output.append(line).append('\n')
-    }
-
-    def exitCode = process.waitFor()
-    if (exitCode != 0) {
-        throw new GradleException("Failed to extract PEAR archive: ${output}")
-    }
-
-    // Find the .phar file in the extracted directory (it's in a subfolder)
+    // Handle different PEAR archive types
     def pharFile = null
-    extractDir.eachFileRecurse { file ->
-        if (file.name.endsWith('.phar')) {
-            pharFile = file
+
+    if (pearArchive.name.endsWith('.phar')) {
+        // Direct .phar file download - use it directly
+        pharFile = pearArchive
+        println "  Found PEAR phar: ${pharFile.name}"
+    } else if (pearArchive.name.endsWith('.tgz') || pearArchive.name.endsWith('.tar.gz')) {
+        // Extract the .tgz archive
+        println "  Extracting PEAR archive..."
+        def extractDir = new File(pearInstallDir, 'extracted')
+        extractDir.mkdirs()
+
+        // Extract .tgz using tar (Windows 10+ has built-in tar support)
+        def tarCommand = [
+            'tar',
+            '-xzf',
+            pearArchive.absolutePath,
+            '-C',
+            extractDir.absolutePath
+        ]
+
+        def process = new ProcessBuilder(tarCommand as String[])
+            .redirectErrorStream(true)
+            .start()
+
+        def output = new StringBuilder()
+        process.inputStream.eachLine { line ->
+            output.append(line).append('\n')
         }
+
+        def exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw new GradleException("Failed to extract PEAR archive: ${output}")
+        }
+
+        // Find the .phar file in the extracted directory (it's in a subfolder)
+        extractDir.eachFileRecurse { file ->
+            if (file.name.endsWith('.phar')) {
+                pharFile = file
+            }
+        }
+
+        if (!pharFile) {
+            throw new GradleException("Could not find .phar file in PEAR archive")
+        }
+
+        println "  Found PEAR phar: ${pharFile.name}"
+    } else {
+        throw new GradleException("Unsupported PEAR archive type: ${pearArchive.name}")
     }
 
-    if (!pharFile) {
-        throw new GradleException("Could not find .phar file in PEAR archive")
-    }
-
-    println "  Found PEAR phar: ${pharFile.name}"
-
-    // Copy the phar file to pear-install directory
-    copy {
-        from pharFile
-        into pearInstallDir
-        rename { 'install-pear-nozlib.phar' }
+    // Copy the phar file to pear-install directory if not already there
+    if (pharFile.absolutePath != new File(pearInstallDir, 'install-pear-nozlib.phar').absolutePath) {
+        copy {
+            from pharFile
+            into pearInstallDir
+            rename { 'install-pear-nozlib.phar' }
+        }
     }
 
     // Execute PEAR installation

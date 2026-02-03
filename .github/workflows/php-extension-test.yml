@@ -980,18 +980,21 @@ jobs:
               for platform in $PLATFORM_LIST; do
                 SUMMARY_FILE="all-results/test-results-${version}-${platform}/summary-${platform}.md"
                 
+                # URL encode the platform name for shields.io (replace hyphens with underscores)
+                BADGE_PLATFORM=$(echo "$platform" | sed 's/-/_/g')
+                
                 if [ -f "$SUMMARY_FILE" ]; then
                   # Check if tests passed by looking for "ALL TESTS PASSED" in summary
                   if grep -q "ALL TESTS PASSED" "$SUMMARY_FILE"; then
                     # Success badge (green)
-                    echo "![${platform}](https://img.shields.io/badge/${platform}-PASS-success?style=flat-square&logo=php&logoColor=white)" >> comment.md
+                    echo "![${platform}](https://img.shields.io/badge/${BADGE_PLATFORM}-PASS-brightgreen?style=flat-square&logo=php&logoColor=white)" >> comment.md
                   else
                     # Failure badge (red)
-                    echo "![${platform}](https://img.shields.io/badge/${platform}-FAIL-critical?style=flat-square&logo=php&logoColor=white)" >> comment.md
+                    echo "![${platform}](https://img.shields.io/badge/${BADGE_PLATFORM}-FAIL-red?style=flat-square&logo=php&logoColor=white)" >> comment.md
                   fi
                 else
                   # No results badge (gray)
-                  echo "![${platform}](https://img.shields.io/badge/${platform}-NO_RESULTS-inactive?style=flat-square&logo=php&logoColor=white)" >> comment.md
+                  echo "![${platform}](https://img.shields.io/badge/${BADGE_PLATFORM}-NO%20RESULTS-lightgrey?style=flat-square&logo=php&logoColor=white)" >> comment.md
                 fi
               done
               

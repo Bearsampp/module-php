@@ -1925,8 +1925,8 @@ def processDependencies(File depsFile, File phpPrepPath) {
             extractArchive(depArchive, depDir)
         }
 
-        // Handle special cases
-        if (depName == 'imagemagick') {
+        // Handle special cases (case-insensitive comparison)
+        if (depName.toLowerCase() == 'imagemagick') {
             def imagickDir = new File(phpPrepPath, 'imagick')
             imagickDir.mkdirs()
             copy {

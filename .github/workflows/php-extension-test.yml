@@ -40,12 +40,11 @@ jobs:
 
       - name: Get releases.properties from main branch
         run: |
-          # Fetch releases.properties from main branch if it doesn't exist in current branch
-          if [ ! -f "releases.properties" ]; then
-            echo "releases.properties not found in current branch, fetching from main..."
-            git fetch origin main:main
-            git checkout main -- releases.properties || echo "Could not fetch releases.properties from main"
-          fi
+          # Always fetch releases.properties from main branch to ensure we have the latest release URLs
+          echo "Fetching releases.properties from main branch..."
+          git fetch origin main:main
+          git checkout origin/main -- releases.properties || echo "Could not fetch releases.properties from main"
+          echo "✅ Using releases.properties from main branch"
 
       - name: Get changed PHP versions
         id: get-versions

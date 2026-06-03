@@ -615,20 +615,37 @@ def findAvailableVersions = {
         )
     }
 
-    return versions.unique()
+    // Remove duplicates and sort semantically
+    return versions.unique().sort { a, b ->
+        def aParts = a.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+        def bParts = b.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+        for (int i = 0; i < Math.max(aParts.size(), bParts.size()); i++) {
+            def aVal = i < aParts.size() ? aParts[i] : 0
+            def bVal = i < bParts.size() ? bParts[i] : 0
+            if (aVal.getClass() != bVal.getClass()) {
+                aVal = aVal.toString()
+                bVal = bVal.toString()
+            }
+            if (aVal != bVal) return aVal <=> bVal
+        }
+        return 0
+    }
 }
 
 def latestVersion = { List<String> versions ->
     if (versions.isEmpty()) return null
-    // Compare numerically by dot-separated parts
+    // Compare numerically by dot-separated parts using semantic versioning
     return versions.max { a, b ->
-        def pa = a.split('\\.').collect { it as int }
-        def pb = b.split('\\.').collect { it as int }
-        def len = Math.max(pa.size(), pb.size())
-        for (int i = 0; i < len; i++) {
-            def ai = i < pa.size() ? pa[i] : 0
-            def bi = i < pb.size() ? pb[i] : 0
-            if (ai != bi) return ai <=> bi
+        def aParts = a.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+        def bParts = b.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+        for (int i = 0; i < Math.max(aParts.size(), bParts.size()); i++) {
+            def aVal = i < aParts.size() ? aParts[i] : 0
+            def bVal = i < bParts.size() ? bParts[i] : 0
+            if (aVal.getClass() != bVal.getClass()) {
+                aVal = aVal.toString()
+                bVal = bVal.toString()
+            }
+            if (aVal != bVal) return aVal <=> bVal
         }
         return 0
     }
@@ -648,12 +665,16 @@ tasks.register('resolveVersion') {
         def supplied = versionProperty as String
         // Aggregate both bin/ and bin/archived/ and display with location tags
         def all = findAvailableVersions().sort { a, b ->
-            def pa = a.split('\\.').collect { it as int }
-            def pb = b.split('\\.').collect { it as int }
-            for (int i=0; i<Math.max(pa.size(), pb.size()); i++) {
-                def ai = i < pa.size() ? pa[i] : 0
-                def bi = i < pb.size() ? pb[i] : 0
-                if (ai != bi) return ai <=> bi
+            def aParts = a.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+            def bParts = b.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+            for (int i = 0; i < Math.max(aParts.size(), bParts.size()); i++) {
+                def aVal = i < aParts.size() ? aParts[i] : 0
+                def bVal = i < bParts.size() ? bParts[i] : 0
+                if (aVal.getClass() != bVal.getClass()) {
+                    aVal = aVal.toString()
+                    bVal = bVal.toString()
+                }
+                if (aVal != bVal) return aVal <=> bVal
             }
             return 0
         }
@@ -750,12 +771,16 @@ tasks.register('releaseInteractive') {
             .findAll { it.isDirectory() && it.name.startsWith(bundleName) }
             .collect { it.name.replace(bundleName, '') } : []
         def all = (inBin + inArchived).toSet().toList().sort { a, b ->
-                def pa = a.split('\\.').collect { it as int }
-                def pb = b.split('\\.').collect { it as int }
-                for (int i=0; i<Math.max(pa.size(), pb.size()); i++) {
-                    def ai = i < pa.size() ? pa[i] : 0
-                    def bi = i < pb.size() ? pb[i] : 0
-                    if (ai != bi) return ai <=> bi
+                def aParts = a.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+                def bParts = b.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+                for (int i = 0; i < Math.max(aParts.size(), bParts.size()); i++) {
+                    def aVal = i < aParts.size() ? aParts[i] : 0
+                    def bVal = i < bParts.size() ? bParts[i] : 0
+                    if (aVal.getClass() != bVal.getClass()) {
+                        aVal = aVal.toString()
+                        bVal = bVal.toString()
+                    }
+                    if (aVal != bVal) return aVal <=> bVal
                 }
                 return 0
             }
@@ -1987,12 +2012,16 @@ tasks.register('listVersions') {
             ?.collect { it.name.replace(bundleName, '') } ?: []) : []
 
         def allVersions = (inBin + inArchived).toSet().toList().sort { a, b ->
-            def pa = a.split('\\.').collect { it as int }
-            def pb = b.split('\\.').collect { it as int }
-            for (int i = 0; i < Math.max(pa.size(), pb.size()); i++) {
-                def ai = i < pa.size() ? pa[i] : 0
-                def bi = i < pb.size() ? pb[i] : 0
-                if (ai != bi) return ai <=> bi
+            def aParts = a.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+            def bParts = b.tokenize('.').collect { it.isInteger() ? it.toInteger() : it }
+            for (int i = 0; i < Math.max(aParts.size(), bParts.size()); i++) {
+                def aVal = i < aParts.size() ? aParts[i] : 0
+                def bVal = i < bParts.size() ? bParts[i] : 0
+                if (aVal.getClass() != bVal.getClass()) {
+                    aVal = aVal.toString()
+                    bVal = bVal.toString()
+                }
+                if (aVal != bVal) return aVal <=> bVal
             }
             return 0
         }

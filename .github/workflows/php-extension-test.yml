@@ -37,12 +37,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
 
       - name: Get releases.properties from main branch
         run: |
           # Always fetch releases.properties from main branch to ensure we have the latest release URLs
           echo "Fetching releases.properties from main branch..."
-          git fetch origin main:main
+          git fetch origin main --depth=1 || git fetch origin main
           git checkout origin/main -- releases.properties || echo "Could not fetch releases.properties from main"
           echo "✅ Using releases.properties from main branch"
 
@@ -62,9 +69,11 @@ jobs:
             # Primary Method: Check for changed files in /bin directory
             echo "🔍 Method 1: Checking /bin directory for version changes..."
             BIN_VERSIONS=""
-            
+
             # Get list of changed files in bin/ directory
-            CHANGED_BIN_FILES=$(git diff --name-only origin/main HEAD | grep "^bin/" || echo "")
+            # Ensure we have the latest main branch
+            git fetch origin main --depth=1 || true
+            CHANGED_BIN_FILES=$(git diff --name-only origin/main HEAD 2>/dev/null | grep "^bin/" || echo "")
             
             if [ -n "$CHANGED_BIN_FILES" ]; then
               echo "Found changed files in /bin:"
@@ -207,6 +216,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup test environment
         run: |
@@ -921,7 +932,7 @@ jobs:
 
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-results-${{ matrix.version }}-${{ matrix.platform }}
           path: test-results/
@@ -934,7 +945,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all test results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: all-results
         continue-on-error: true

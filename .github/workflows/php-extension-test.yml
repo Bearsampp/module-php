@@ -746,12 +746,23 @@ jobs:
           if ($imagickDll) {
             Write-Host "`n🖼️  Testing imagick functionality..."
             try {
+              # First, run php --ri to check extension info
+              Write-Host "   Checking extension reflection info..."
+              $riOutput = & $phpExe -d "extension=$($imagickDll.FullName)" --ri imagick 2>&1 | Out-String
+
+              if ($riOutput -match 'Imagick\s+Support') {
+                Write-Host "   ✅ Extension reflection info available"
+              } else {
+                Write-Host "   ⚠️  Could not retrieve extension reflection"
+              }
+
+              # Then test image creation
               $testCode = "`$img = new Imagick(); `$img->newImage(100, 100, new ImagickPixel('red')); `$img->setImageFormat('png'); echo 'imagick: OK';"
               $output = & $phpExe -d "extension=$($imagickDll.FullName)" -r $testCode 2>&1
-              
+
               if ($output -match 'imagick: OK') {
                 Write-Host "✅ Imagick can create images"
-                $funcResults['imagick'] = @{ success = $true }
+                $funcResults['imagick'] = @{ success = $true; riOutput = $riOutput }
               } else {
                 Write-Host "⚠️  Imagick test inconclusive"
                 $funcResults['imagick'] = @{ success = $false }

@@ -147,19 +147,27 @@ jobs:
           for asset in release_data.get('assets', []):
               filename = asset['name']
 
-              # Check if file ends with .7z
-              if filename.endswith('.7z'):
+              # Check if file ends with .7z or .7z.exe
+              if filename.endswith('.7z') or filename.endswith('.7z.exe'):
                   download_url = asset['browser_download_url']
 
-                  # Extract version number after filename prefix (e.g., "bearsampp-apache-2.4.66-2025.12.8.7z" -> "2.4.66")
-                  # Pattern: filename_prefix followed by version, then either a dash+date or .7z
-                  # Supports: 18.1, 17.2.3, 3.2.1.0, 17.0-RC1, 2.4.62
-                  # The lookahead ensures we stop before a date pattern or .7z extension
-                  version_match = re.search(
-                      rf'{filename_prefix}-(\d+\.\d+(?:\.\d+)?(?:\.\d+)?(?:-(?:RC|beta|alpha|dev)\d*)?)(?=-20\d{{2}}\.\d{{1,2}}\.\d{{1,2}}|\.7z|$)',
-                      filename,
-                      re.IGNORECASE
-                  )
+                  version_match = None
+
+                  if module_name.lower() == 'git':
+                      # Git uses PortableGit format (e.g., "PortableGit-2.55.0.2-64-bit.7z.exe" -> "2.55.0.2")
+                      version_match = re.search(
+                          r'PortableGit-(\d+\.\d+(?:\.\d+)*)(?=-(?:\d+-)?bit|\.7z)',
+                          filename,
+                          re.IGNORECASE
+                      )
+                  else:
+                      # Other modules use bearsampp-prefix format (e.g., "bearsampp-apache-2.4.66-2025.12.8.7z" -> "2.4.66")
+                      version_match = re.search(
+                          rf'{filename_prefix}-(\d+\.\d+(?:\.\d+)?(?:\.\d+)?)(?=(?:-(?:RC|beta|alpha|dev)\d*)?-20\d{{2}}\.\d{{1,2}}\.\d{{1,2}}|\.7z|$)',
+                          filename,
+                          re.IGNORECASE
+                      )
+
                   if version_match:
                       ver = version_match.group(1)
                       assets.append({
@@ -172,7 +180,8 @@ jobs:
                       print(f"Warning: Could not extract version from: {filename}")
                       # Debug: print the filename for troubleshooting
                       print(f"  Filename: {filename}")
-                      print(f"  Looking for prefix: {filename_prefix}")
+                      if module_name.lower() == 'git':
+                          print(f"  Expected PortableGit format")
 
           if not assets:
               print(f"No .7z assets found in release")
@@ -223,16 +232,24 @@ jobs:
               # Try to extract the correct version from the URL
               # URL format: .../bearsampp-apache-2.4.66-2025.12.8.7z (for apache)
               # URL format: .../bearsampp-postgresql-18.1-2025.12.8.7z (for other modules)
-              url_version_match = re.search(
-                  rf'{filename_prefix}-(\d+\.\d+(?:\.\d+)?(?:\.\d+)?(?:-(?:RC|beta|alpha|dev)\d*)?)(?=-20\d{{2}}\.\d{{1,2}}\.\d{{1,2}}|\.7z|/|$)',
-                  url,
-                  re.IGNORECASE
-              )
+              # URL format: .../PortableGit-2.55.0.2-64-bit.7z.exe (for Git)
+              if module_name.lower() == 'git':
+                  url_version_match = re.search(
+                      r'PortableGit-(\d+\.\d+(?:\.\d+)*)(?=-(?:\d+-)?bit|\.7z)',
+                      url,
+                      re.IGNORECASE
+                  )
+              else:
+                  url_version_match = re.search(
+                      rf'{filename_prefix}-(\d+\.\d+(?:\.\d+)?(?:\.\d+)?)(?=(?:-(?:RC|beta|alpha|dev)\d*)?-20\d{{2}}\.\d{{1,2}}\.\d{{1,2}}|\.7z|/|$)',
+                      url,
+                      re.IGNORECASE
+                  )
 
               if url_version_match:
                   correct_version = url_version_match.group(1)
-                  # If the key is malformed (date-like or has trailing year), fix it
-                  if re.match(r'^20\d{2}\.', key) or re.search(r'-20\d{2}$', key):
+                  # If the key is malformed (date-like or has trailing year or has -64 suffix), fix it
+                  if re.match(r'^20\d{2}\.', key) or re.search(r'-20\d{2}$', key) or re.search(r'-\d+-bit$', key, re.IGNORECASE):
                       print(f"Fixing malformed entry: {key} -> {correct_version}")
                       fixed_properties[correct_version] = url
                   else:
@@ -317,7 +334,7 @@ jobs:
             - Added version entries with download URLs
             - Maintained semver ordering (newest first)
 
-            **Release URL:** ${{ github.event.release.html_url || format('https://github.com/{0}/{1}/releases/tag/{2}', github.repository_owner, github.event.repository.name, github.event.inputs.release_tag) }}
+            **Release URL:** ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event.release.tag_name || github.event.inputs.release_tag }}
 
             ### Next Steps:
             1. ⏳ Link validation will run automatically
@@ -327,51 +344,126 @@ jobs:
             automated
             releases-update
 
-      - name: Wait for validation checks
+      - name: Validate URLs in updated releases.properties
         if: steps.create_pr.outputs.pull-request-number != ''
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASES_FILE: releases.properties
         run: |
-          PR_NUMBER=${{ steps.create_pr.outputs.pull-request-number }}
-          echo "Waiting for validation checks to complete on PR #$PR_NUMBER..."
-          
-          # Give GitHub a moment to register the new PR and start the check
-          sleep 30
-          
-          # Check every 30 seconds for up to 20 minutes (40 iterations)
-          for i in {1..40}; do
-            CHECK_JSON=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup --jq '.statusCheckRollup // []')
-            
-            # Match checks by either exact name/context or containing validate-links (e.g. "validate-links / validate-links")
-            CHECKS=$(echo "$CHECK_JSON" | jq -c '.[] | select((.name // .context // "") | ascii_downcase | contains("validate-links"))')
-            
-            if [ -n "$CHECKS" ]; then
-              # Get the latest reported state from all matching checks
-              STATES=$(echo "$CHECKS" | jq -r '(.conclusion // .status // "unknown") | ascii_downcase')
-              LATEST_STATE=$(echo "$STATES" | tail -n 1)
-              echo "Current state(s) of validation check(s): $(echo "$STATES" | tr '\n' ' ' | sed 's/ *$//')"
-              
-              if echo "$STATES" | grep -Eq '^(failure|error|cancelled|action_required)$'; then
-                echo "Validation failed with state(s): $(echo "$STATES" | tr '\n' ' ' | sed 's/ *$//')"
-                exit 1
-              elif [[ "$LATEST_STATE" == "success" ]]; then
-                echo "Validation passed!"
-                exit 0
-              fi
-              # If state is pending/in_progress/queued/etc., continue waiting
-            else
-              echo "Validation check not found yet, waiting... (Iteration $i/40)"
-              if [ $i -gt 5 ]; then
-                echo "Available checks: $(echo "$CHECK_JSON" | jq -r '.[] | (.name // .context // "<unknown>")' | tr '\n' ' ')"
-              fi
-            fi
-            
-            sleep 30
-          done
-          
-          echo "Timeout waiting for validation checks"
-          exit 1
+          python << 'EOF'
+          import os
+          import sys
+          import requests
+          import time
+
+          releases_file = os.environ.get('RELEASES_FILE', 'releases.properties')
+
+          if not os.path.exists(releases_file):
+              print(f"❌ File not found: {releases_file}")
+              sys.exit(1)
+
+          print(f"📄 Validating URLs in: {releases_file}")
+          print("-" * 80)
+
+          with open(releases_file, 'r', encoding='utf-8') as f:
+              lines = f.readlines()
+
+          urls_to_check = []
+          for line_num, line in enumerate(lines, 1):
+              line = line.strip()
+
+              if not line or line.startswith('#'):
+                  continue
+
+              if '=' in line:
+                  key, value = line.split('=', 1)
+                  url = value.strip()
+
+                  if url.startswith('http://') or url.startswith('https://'):
+                      urls_to_check.append({
+                          'line': line_num,
+                          'version': key.strip(),
+                          'url': url
+                      })
+
+          print(f"Found {len(urls_to_check)} URL(s) to validate\n")
+
+          all_valid = True
+          valid_count = 0
+          invalid_urls = []
+
+          for item in urls_to_check:
+              version = item['version']
+              url = item['url']
+              line = item['line']
+
+              try:
+                  response = requests.head(url, timeout=10, allow_redirects=True)
+
+                  if response.status_code >= 400:
+                      response = requests.get(url, timeout=10, allow_redirects=True, stream=True)
+
+                  if response.status_code == 200:
+                      print(f"✅ Version {version}: {response.status_code} OK")
+                      valid_count += 1
+                  else:
+                      print(f"❌ Version {version}: {response.status_code} {response.reason}")
+                      invalid_urls.append({
+                          'version': version,
+                          'url': url,
+                          'status': response.status_code,
+                          'reason': response.reason
+                      })
+                      all_valid = False
+
+              except requests.exceptions.Timeout:
+                  print(f"⏱️  Version {version}: Request timeout (>10s)")
+                  invalid_urls.append({
+                      'version': version,
+                      'url': url,
+                      'status': 'TIMEOUT',
+                      'reason': 'Request timeout'
+                  })
+                  all_valid = False
+
+              except requests.exceptions.RequestException as e:
+                  print(f"❌ Version {version}: {str(e)}")
+                  invalid_urls.append({
+                      'version': version,
+                      'url': url,
+                      'status': 'ERROR',
+                      'reason': str(e)
+                  })
+                  all_valid = False
+
+              time.sleep(0.5)
+
+          print("\n" + "=" * 80)
+          print("VALIDATION SUMMARY")
+          print("=" * 80)
+          print(f"Total URLs checked: {len(urls_to_check)}")
+          print(f"Valid URLs: {valid_count}")
+          print(f"Invalid URLs: {len(invalid_urls)}")
+          print()
+
+          if invalid_urls:
+              print("❌ INVALID URLS FOUND:")
+              print("-" * 80)
+              for item in invalid_urls:
+                  print(f"\nVersion: {item['version']}")
+                  print(f"URL: {item['url']}")
+                  print(f"Status: {item['status']} - {item['reason']}")
+              print()
+              print("=" * 80)
+              print("❌ VALIDATION FAILED - Please fix the invalid URLs above")
+              print("=" * 80)
+              sys.exit(1)
+          else:
+              print("=" * 80)
+              print("✅ ALL URLS ARE VALID")
+              print("=" * 80)
+              sys.exit(0)
+
+          EOF
 
       - name: Enable auto-merge
         if: steps.create_pr.outputs.pull-request-number != ''
@@ -380,6 +472,34 @@ jobs:
           gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --auto --squash
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Wait for auto-merge to complete
+        if: steps.create_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          PR_NUMBER=${{ steps.create_pr.outputs.pull-request-number }}
+          echo "Waiting for PR #$PR_NUMBER to be merged..."
+
+          # Check every 10 seconds for up to 5 minutes (30 iterations)
+          for i in {1..30}; do
+            PR_STATE=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq '.state')
+            echo "PR state: $PR_STATE"
+
+            if [[ "$PR_STATE" == "MERGED" ]]; then
+              echo "PR has been merged!"
+              exit 0
+            elif [[ "$PR_STATE" == "CLOSED" ]]; then
+              echo "PR was closed without merging"
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          echo "Timeout waiting for PR to be merged"
+          exit 1
 
   dispatch:
     runs-on: ubuntu-latest

@@ -933,7 +933,19 @@ tasks.register('fetch') {
         // Fetch release assets from GitHub API
         printInfo "Fetching release assets from GitHub..."
 
-        def githubToken = findProperty('github.token') ?: System.getenv('GH_PAT')
+        def githubToken = System.getenv('GITHUB_TOKEN')
+        if (!githubToken) {
+            githubToken = System.getenv('GH_PAT')
+        }
+        if (!githubToken) {
+            githubToken = findProperty('github.token')
+        }
+        def localProps = new Properties()
+        def localPropsFile = file('build.local.properties')
+        if (localPropsFile.exists() && !githubToken) {
+            localPropsFile.withInputStream { localProps.load(it) }
+            githubToken = localProps.getProperty('github.token')
+        }
         def apiUrl = "https://api.github.com/repos/Bearsampp/modules-untouched/releases/tags/${releaseTag}"
 
         def connection = new URL(apiUrl).openConnection()

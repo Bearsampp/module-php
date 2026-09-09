@@ -22,7 +22,5 @@
 build/
 .gradletasknamecache
 gradle-app.setting
-gradle-local.properties
-build.local.properties
 !gradle-wrapper.jar
 !gradle-wrapper.properties

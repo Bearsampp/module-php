@@ -80,8 +80,8 @@ jobs:
               echo "$CHANGED_BIN_FILES"
               echo ""
               
-              # Extract version numbers from directory names (e.g., bin/php8.3.27/ -> 8.3.27)
-              BIN_VERSIONS=$(echo "$CHANGED_BIN_FILES" | grep -oE 'bin/php[0-9]+\.[0-9]+\.[0-9]+' | sed 's|bin/php||' | sort -u || echo "")
+              # Extract version numbers from directory names (e.g., bin/php8.3.27/ -> 8.3.27, bin/php8.6.0RC2/ -> 8.6.0RC2)
+              BIN_VERSIONS=$(echo "$CHANGED_BIN_FILES" | grep -oE 'bin/php[0-9]+\.[0-9]+\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+|rc[0-9]+)?' | sed 's|bin/php||' | sort -u || echo "")
               
               if [ -n "$BIN_VERSIONS" ]; then
                 echo "✅ Detected versions from /bin directory:"
@@ -116,8 +116,8 @@ jobs:
               if [ -n "$PR_TITLE" ]; then
                 echo "PR Title: $PR_TITLE"
                 
-                # Extract version patterns from PR title (e.g., 8.3.27, 8.4.0)
-                PR_VERSIONS=$(echo "$PR_TITLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+                # Extract version patterns from PR title (e.g., 8.3.27, 8.4.0, 8.6.0RC2)
+                PR_VERSIONS=$(echo "$PR_TITLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+|rc[0-9]+)?' || echo "")
                 
                 if [ -n "$PR_VERSIONS" ]; then
                   echo "Found versions in PR title: $PR_VERSIONS"
@@ -149,7 +149,7 @@ jobs:
               echo "🔍 Method 3 (Final Fallback): Testing latest 5 versions from releases.properties..."
               
               # Extract all version numbers from releases.properties and get the latest 5
-              FALLBACK_VERSIONS=$(grep -E "^[0-9]+\.[0-9]+\.[0-9]+\s*=" releases.properties | cut -d'=' -f1 | tr -d ' ' | sort -V -r | head -5 || echo "")
+              FALLBACK_VERSIONS=$(grep -E "^[0-9]+\.[0-9]+\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+|rc[0-9]+)?\s*=" releases.properties | cut -d'=' -f1 | tr -d ' ' | sort -V -r | head -5 || echo "")
               
               if [ -n "$FALLBACK_VERSIONS" ]; then
                 echo "✅ Will test latest 5 versions:"

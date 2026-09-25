@@ -24,11 +24,11 @@ The workflow intelligently determines which versions to test based on the contex
 
 1. **Primary Method: /bin Directory Detection** (Most Accurate)
    - Automatically detects which PHP versions are included in the PR from changed files in `/bin` directory
-   - Extracts version numbers from directory names (e.g., `bin/php8.3.27/` → `8.3.27`)
+   - Extracts version numbers from directory names (e.g., `bin/php8.3.27/` → `8.3.27`, `bin/php8.6.0RC2/` → `8.6.0RC2`)
    - Verifies detected versions exist in `releases.properties`
    - **Use Case**: New versions are created and added to a pre-release (tagged with date, e.g., "2025.11.23")
    - **How it works**:
-     - Version directories are created in `/bin` (e.g., `bin/php8.3.27/`, `bin/php8.4.0/`)
+     - Version directories are created in `/bin` (e.g., `bin/php8.3.27/`, `bin/php8.4.0/`, `bin/php8.6.0RC2/`)
      - The `releases.properties` file is updated via the releases.properties workflow
      - A PR is created from a release branch (e.g., "November") to main
      - This workflow detects changed files in `/bin` and extracts version numbers from directory names
@@ -36,7 +36,7 @@ The workflow intelligently determines which versions to test based on the contex
 
 2. **Fallback Method: PR Title Detection**
    - If no versions found in `/bin`, extracts version numbers from PR title
-   - Supports patterns like "8.3.27", "8.4.0" in PR titles
+   - Supports patterns like "8.3.27", "8.4.0", "8.6.0RC2" in PR titles
    - Verifies these versions exist in `releases.properties`
    - **Example**: PR title "Update docs for PHP 8.3.27" → tests version 8.3.27
 
@@ -526,6 +526,7 @@ When tests are skipped, you'll see:
 
 - **Three-Tier Smart Detection System**: Primary detection from `/bin` directory changes, fallback to PR title, final fallback to latest 5 versions
 - **Bin Directory Monitoring**: Automatically detects versions from changed files in `/bin/php{version}/` directories
+- **Pre-release Suffix Support**: Preserves prerelease suffixes (e.g., `8.6.0RC2`, `8.6.0beta3`) across all detection methods so tests target the exact release artifact
 - **Pre-release Workflow Support**: Optimized for pre-release → PR → main workflow with automatic version detection
 - **Latest 5 Versions Fallback**: Ensures tests always run even when specific versions aren't detected
 - **PR Title Version Detection**: Extracts version numbers from PR titles as fallback method

@@ -65,7 +65,7 @@ jobs:
           else
             echo "=== Smart Version Detection ==="
             echo ""
-            
+
             # Primary Method: Check for changed files in /bin directory
             echo "🔍 Method 1: Checking /bin directory for version changes..."
             BIN_VERSIONS=""
@@ -74,20 +74,20 @@ jobs:
             # Ensure we have the latest main branch
             git fetch origin main --depth=1 || true
             CHANGED_BIN_FILES=$(git diff --name-only origin/main HEAD 2>/dev/null | grep "^bin/" || echo "")
-            
+
             if [ -n "$CHANGED_BIN_FILES" ]; then
               echo "Found changed files in /bin:"
               echo "$CHANGED_BIN_FILES"
               echo ""
-              
-              # Extract version numbers from directory names (e.g., bin/php8.3.27/ -> 8.3.27, bin/php8.6.0RC2/ -> 8.6.0RC2)
+
+              # Extract version numbers from directory names (e.g., bin/php8.3.27/ -> 8.3.27, bin/php8.6.0RC3/ -> 8.6.0RC3)
               BIN_VERSIONS=$(echo "$CHANGED_BIN_FILES" | grep -oE 'bin/php[0-9]+\.[0-9]+\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+|rc[0-9]+)?' | sed 's|bin/php||' | sort -u || echo "")
-              
+
               if [ -n "$BIN_VERSIONS" ]; then
                 echo "✅ Detected versions from /bin directory:"
                 echo "$BIN_VERSIONS"
                 echo ""
-                
+
                 # Verify these versions exist in releases.properties
                 VALID_BIN_VERSIONS=""
                 for ver in $BIN_VERSIONS; do
@@ -98,7 +98,7 @@ jobs:
                     echo "  ⚠️  Version $ver not found in releases.properties (skipping)"
                   fi
                 done
-                
+
                 if [ -n "$VALID_BIN_VERSIONS" ]; then
                   BIN_VERSIONS="$VALID_BIN_VERSIONS"
                 else
@@ -106,23 +106,23 @@ jobs:
                 fi
               fi
             fi
-            
+
             # Fallback Method: Check PR title for version numbers
             PR_VERSIONS=""
             if [ -z "$BIN_VERSIONS" ]; then
               echo "🔍 Method 2 (Fallback): Checking PR title for version numbers..."
               PR_TITLE="${{ github.event.pull_request.title }}"
-              
+
               if [ -n "$PR_TITLE" ]; then
                 echo "PR Title: $PR_TITLE"
-                
-                # Extract version patterns from PR title (e.g., 8.3.27, 8.4.0, 8.6.0RC2)
+
+                # Extract version patterns from PR title (e.g., 8.3.27, 8.4.0, 8.6.0RC3)
                 PR_VERSIONS=$(echo "$PR_TITLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+|rc[0-9]+)?' || echo "")
-                
+
                 if [ -n "$PR_VERSIONS" ]; then
                   echo "Found versions in PR title: $PR_VERSIONS"
                   echo ""
-                  
+
                   # Verify these versions exist in releases.properties
                   VALID_PR_VERSIONS=""
                   for ver in $PR_VERSIONS; do
@@ -133,7 +133,7 @@ jobs:
                       echo "  ⚠️  Version $ver not found in releases.properties (skipping)"
                     fi
                   done
-                  
+
                   if [ -n "$VALID_PR_VERSIONS" ]; then
                     PR_VERSIONS="$VALID_PR_VERSIONS"
                   else
@@ -142,22 +142,22 @@ jobs:
                 fi
               fi
             fi
-            
+
             # Final Fallback: Test latest 5 versions from releases.properties
             FALLBACK_VERSIONS=""
             if [ -z "$BIN_VERSIONS" ] && [ -z "$PR_VERSIONS" ]; then
               echo "🔍 Method 3 (Final Fallback): Testing latest 5 versions from releases.properties..."
-              
+
               # Extract all version numbers from releases.properties and get the latest 5
               FALLBACK_VERSIONS=$(grep -E "^[0-9]+\.[0-9]+\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+|rc[0-9]+)?\s*=" releases.properties | cut -d'=' -f1 | tr -d ' ' | sort -V -r | head -5 || echo "")
-              
+
               if [ -n "$FALLBACK_VERSIONS" ]; then
                 echo "✅ Will test latest 5 versions:"
                 echo "$FALLBACK_VERSIONS"
                 echo ""
               fi
             fi
-            
+
             # Determine final version list
             NEW_VERSIONS=""
             if [ -n "$BIN_VERSIONS" ]; then
@@ -170,7 +170,7 @@ jobs:
               NEW_VERSIONS="$FALLBACK_VERSIONS"
               echo "📋 Using latest 5 versions (fallback)"
             fi
-            
+
             if [ -z "$NEW_VERSIONS" ]; then
               echo "❌ No PHP versions detected by any method"
               echo "has-changes=false" >> $GITHUB_OUTPUT
@@ -180,7 +180,7 @@ jobs:
               echo "=== Final Version List ==="
               echo "$NEW_VERSIONS"
               echo ""
-              
+
               echo "has-changes=true" >> $GITHUB_OUTPUT
               # Convert to JSON array
               VERSIONS_JSON=$(echo "$NEW_VERSIONS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
@@ -212,7 +212,7 @@ jobs:
       matrix:
         version: ${{ fromJson(needs.detect-versions.outputs.versions) }}
         platform: ${{ fromJson(needs.detect-versions.outputs.platforms) }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -232,25 +232,25 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $version = "${{ matrix.version }}"
-          
+
           Write-Host "`n=== Phase 1.1: Download and Extract PHP $version ==="
           Write-Host "Platform: ${{ matrix.platform }}"
           Write-Host ""
-          
+
           try {
             $content = Get-Content "releases.properties"
             $line = $content | Where-Object { $_ -match "^$version\s*=" }
-            
+
             if (-not $line) {
               throw "Version $version not found in releases.properties"
             }
-            
+
             $url = ($line -split '=', 2)[1].Trim()
             Write-Host "📥 Download URL: $url"
-            
+
             $archivePath = "php-$version.7z"
             Write-Host "⏳ Downloading PHP archive..."
-            
+
             try {
               # Check if URL is a GitHub release URL and if we have a token
               $headers = @{}
@@ -258,7 +258,7 @@ jobs:
                 Write-Host "Using GitHub authentication token for download"
                 $headers["Authorization"] = "token $env:GH_TOKEN"
               }
-              
+
               if ($headers.Count -gt 0) {
                 Invoke-WebRequest -Uri $url -OutFile $archivePath -Headers $headers -UseBasicParsing -TimeoutSec 300
               } else {
@@ -273,17 +273,17 @@ jobs:
               echo "error=Download failed: $($_.Exception.Message)" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             if (-not (Test-Path $archivePath)) {
               Write-Host "❌ ERROR: Download file not found at expected path: $archivePath"
               echo "success=false" >> $env:GITHUB_OUTPUT
               echo "error=Download file not found after download attempt" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             $fileSize = (Get-Item $archivePath).Length / 1MB
             Write-Host "✅ Downloaded: $archivePath ($([math]::Round($fileSize, 2)) MB)"
-            
+
             # Verify file is not empty or too small
             if ($fileSize -lt 0.1) {
               Write-Host "❌ ERROR: Downloaded file is too small ($([math]::Round($fileSize, 2)) MB), likely corrupted"
@@ -291,13 +291,13 @@ jobs:
               echo "error=Downloaded file is too small or corrupted" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             Write-Host "📦 Extracting PHP archive..."
             $extractPath = "test-php-$version"
-            
+
             if (Get-Command 7z -ErrorAction SilentlyContinue) {
               $extractOutput = & 7z x $archivePath -o"$extractPath" -y 2>&1
-              
+
               if ($LASTEXITCODE -eq 0) {
                 Write-Host "✅ Extraction successful"
               } else {
@@ -314,10 +314,10 @@ jobs:
               echo "error=7-Zip not found" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             # Find php.exe in the extracted directory (may be nested)
             $phpExe = Get-ChildItem -Path $extractPath -Filter "php.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            
+
             if (-not $phpExe) {
               Write-Host "❌ ERROR: php.exe not found after extraction"
               Write-Host "Directory structure after extraction:"
@@ -326,14 +326,14 @@ jobs:
               echo "error=php.exe not found after extraction" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             $phpExe = $phpExe.FullName
             Write-Host "✅ Found php.exe: $phpExe"
-            
+
             Write-Host "✅ PHP extracted successfully"
             echo "success=true" >> $env:GITHUB_OUTPUT
             echo "php-path=$phpExe" >> $env:GITHUB_OUTPUT
-            
+
           } catch {
             Write-Host "❌ ERROR: Unexpected error occurred"
             Write-Host "Error message: $($_.Exception.Message)"
@@ -351,31 +351,31 @@ jobs:
           $ErrorActionPreference = "Stop"
           $version = "${{ matrix.version }}"
           $phpExe = "${{ steps.download-php.outputs.php-path }}"
-          
+
           Write-Host "`n=== Phase 1.2: Verify PHP Executable ==="
-          
+
           try {
             Write-Host "🔍 Testing PHP version command..."
             $versionOutput = & $phpExe -v 2>&1
-            
+
             if ($LASTEXITCODE -ne 0) {
               Write-Host "❌ ERROR: PHP executable returned error code: $LASTEXITCODE"
               echo "success=false" >> $env:GITHUB_OUTPUT
               echo "error=PHP executable returned error code: $LASTEXITCODE" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             Write-Host $versionOutput
-            
+
             if ($versionOutput -match "PHP\s+$version") {
               Write-Host "✅ PHP version matches: $version"
             } else {
               Write-Host "⚠️  Warning: Version string mismatch"
             }
-            
+
             Write-Host "`n🔍 Testing PHP code execution..."
             $testOutput = & $phpExe -r "echo 'PHP is working';" 2>&1
-            
+
             if ($testOutput -match "PHP is working") {
               Write-Host "✅ PHP executes code successfully"
             } else {
@@ -385,9 +385,9 @@ jobs:
               echo "error=PHP failed to execute test code" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             echo "success=true" >> $env:GITHUB_OUTPUT
-            
+
           } catch {
             Write-Host "❌ ERROR: Unexpected error occurred"
             Write-Host "Error message: $($_.Exception.Message)"
@@ -403,17 +403,17 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $phpExe = "${{ steps.download-php.outputs.php-path }}"
-          
+
           Write-Host "`n=== Phase 2.1: Locate Bundled Extensions ==="
-          
+
           try {
             # Get PHP directory and ext subdirectory
             $phpDir = Split-Path -Parent $phpExe
             $extDir = Join-Path $phpDir "ext"
-            
+
             Write-Host "PHP Directory: $phpDir"
             Write-Host "Extensions Directory: $extDir"
-            
+
             if (-not (Test-Path $extDir)) {
               Write-Host "❌ ERROR: ext directory not found at: $extDir"
               Write-Host "Directory contents:"
@@ -422,35 +422,35 @@ jobs:
               echo "error=ext directory not found" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             $dllFiles = Get-ChildItem -Path $extDir -Filter "*.dll" -ErrorAction SilentlyContinue
-            
+
             if (-not $dllFiles -or $dllFiles.Count -eq 0) {
               Write-Host "❌ ERROR: No DLL files found in ext directory"
               echo "success=false" >> $env:GITHUB_OUTPUT
               echo "error=No extension DLLs found in ext directory" >> $env:GITHUB_OUTPUT
               exit 1
             }
-            
+
             Write-Host "`n📦 Found $($dllFiles.Count) bundled extensions:"
             $extResults = @{}
             foreach ($dll in $dllFiles) {
               $extName = $dll.BaseName -replace '^php_', ''
               Write-Host "  - $($dll.Name) ($([math]::Round($dll.Length / 1KB, 2)) KB)"
-              $extResults[$extName] = @{ 
+              $extResults[$extName] = @{
                 success = $true
                 path = $dll.FullName
                 name = $dll.Name
                 size = [math]::Round($dll.Length / 1KB, 2)
               }
             }
-            
+
             $extResults | ConvertTo-Json -Depth 10 | Out-File "test-results/extensions.json"
-            
+
             Write-Host "`n✅ Successfully located bundled extensions"
             echo "success=true" >> $env:GITHUB_OUTPUT
             echo "ext-dir=$extDir" >> $env:GITHUB_OUTPUT
-            
+
           } catch {
             Write-Host "❌ ERROR: $($_.Exception.Message)"
             echo "success=false" >> $env:GITHUB_OUTPUT
@@ -465,50 +465,50 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
-          
+
           Write-Host "`n=== Phase 2.2: Validate DLL Architecture ==="
-          
+
           function Test-DllArchitecture {
             param([string]$DllPath)
-            
+
             try {
               $fs = [System.IO.FileStream]::new($DllPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
               $br = [System.IO.BinaryReader]::new($fs)
-              
+
               $dosHeader = $br.ReadBytes(64)
               $peOffset = [BitConverter]::ToInt32($dosHeader, 60)
-              
+
               $fs.Seek($peOffset, [System.IO.SeekOrigin]::Begin) | Out-Null
               $peSignature = $br.ReadBytes(4)
-              
+
               $machine = $br.ReadUInt16()
-              
+
               $fs.Close()
-              
+
               $arch = switch ($machine) {
                 0x014c { "I386" }
                 0x8664 { "AMD64" }
                 default { "UNKNOWN" }
               }
-              
+
               return @{ Success = $true; Architecture = $arch }
             } catch {
               return @{ Success = $false; Error = $_.Exception.Message }
             }
           }
-          
+
           $archResults = @{}
           $allValid = $true
-          
+
           $dllFiles = Get-ChildItem -Path $extDir -Filter "*.dll"
-          
+
           foreach ($dll in $dllFiles) {
             Write-Host "`n🔍 Validating: $($dll.Name)"
             $result = Test-DllArchitecture -DllPath $dll.FullName
-            
+
             if ($result.Success) {
               Write-Host "   Architecture: $($result.Architecture)"
-              
+
               if ($result.Architecture -eq "AMD64") {
                 Write-Host "   ✅ Correct architecture (x64)"
                 $archResults[$dll.Name] = @{ valid = $true; arch = $result.Architecture }
@@ -523,7 +523,7 @@ jobs:
               $allValid = $false
             }
           }
-          
+
           $archResults | ConvertTo-Json -Depth 10 | Out-File "test-results/architecture.json"
           echo "success=$allValid" >> $env:GITHUB_OUTPUT
 
@@ -535,24 +535,24 @@ jobs:
           $ErrorActionPreference = "Continue"
           $phpExe = "${{ steps.download-php.outputs.php-path }}"
           $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
-          
+
           Write-Host "`n=== Phase 2.3: Test Extension Loading ==="
-          
+
           $loadResults = @{}
           $allLoaded = $true
-          
+
           $dllFiles = Get-ChildItem -Path $extDir -Filter "*.dll"
-          
+
           foreach ($dll in $dllFiles) {
             $extName = $dll.BaseName -replace '^php_', ''
             Write-Host "`n🔌 Testing: $extName"
-            
+
             try {
               $isZend = $extName -match 'xdebug'
               $directive = if ($isZend) { "zend_extension" } else { "extension" }
-              
+
               $output = & $phpExe -d "$directive=$($dll.FullName)" -m 2>&1 | Out-String
-              
+
               if ($output -match $extName) {
                 Write-Host "   �� Extension loaded successfully"
                 $loadResults[$extName] = @{ loaded = $true; type = $directive }
@@ -567,7 +567,7 @@ jobs:
               $allLoaded = $false
             }
           }
-          
+
           $loadResults | ConvertTo-Json -Depth 10 | Out-File "test-results/loading.json"
           echo "success=$allLoaded" >> $env:GITHUB_OUTPUT
 
@@ -578,45 +578,45 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $version = "${{ matrix.version }}"
-          
+
           Write-Host "`n=== Phase 3.1: Download Dependencies ==="
-          
+
           $depResults = @{}
           $allSuccess = $true
-          
+
           $depsFile = "bin/php$version/deps.properties"
           if (-not (Test-Path $depsFile)) {
             Write-Host "⚠️  No deps.properties file found for PHP $version"
             echo "success=true" >> $env:GITHUB_OUTPUT
             return
           }
-          
+
           New-Item -ItemType Directory -Force -Path "test-dependencies" | Out-Null
-          
+
           $content = Get-Content $depsFile
           foreach ($line in $content) {
             if ($line -match '^\s*#' -or $line -match '^\s*$') { continue }
-            
+
             $parts = $line -split '=', 2
             if ($parts.Count -eq 2) {
               $depName = $parts[0].Trim()
               $depUrl = $parts[1].Trim()
-              
+
               Write-Host "`n📦 Downloading $depName..."
-              
+
               try {
                 $fileName = [System.IO.Path]::GetFileName($depUrl)
                 $downloadPath = Join-Path "test-dependencies" $fileName
-                
+
                 Invoke-WebRequest -Uri $depUrl -OutFile $downloadPath -UseBasicParsing
-                
+
                 if (Test-Path $downloadPath) {
                   $fileSize = (Get-Item $downloadPath).Length / 1MB
                   Write-Host "✅ Downloaded: $fileName ($([math]::Round($fileSize, 2)) MB)"
-                  
+
                   if ($fileName -match '\.(7z|zip)$') {
                     $extractPath = Join-Path "test-dependencies" $depName
-                    
+
                     if ($fileName -match '\.7z$') {
                       if (Get-Command 7z -ErrorAction SilentlyContinue) {
                         & 7z x $downloadPath -o"$extractPath" -y | Out-Null
@@ -628,7 +628,7 @@ jobs:
                       Expand-Archive -Path $downloadPath -DestinationPath $extractPath -Force
                       Write-Host "✅ Extracted to: $extractPath"
                     }
-                    
+
                     $depResults[$depName] = @{ success = $true; path = $extractPath }
                   } else {
                     $depResults[$depName] = @{ success = $true; path = $downloadPath }
@@ -643,7 +643,7 @@ jobs:
               }
             }
           }
-          
+
           $depResults | ConvertTo-Json -Depth 10 | Out-File "test-results/dependencies.json"
           echo "success=$allSuccess" >> $env:GITHUB_OUTPUT
 
@@ -655,25 +655,25 @@ jobs:
           $ErrorActionPreference = "Continue"
           $phpExe = "${{ steps.download-php.outputs.php-path }}"
           $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
-          
+
           Write-Host "`n=== Phase 3.2: Test Extensions with Dependencies ==="
-          
+
           $depDirs = Get-ChildItem -Path "test-dependencies" -Directory -ErrorAction SilentlyContinue
           foreach ($dir in $depDirs) {
             $env:PATH = "$($dir.FullName);$env:PATH"
             Write-Host "Added to PATH: $($dir.FullName)"
           }
-          
+
           $depTestResults = @{}
           $allSuccess = $true
-          
+
           $imagickDll = Get-ChildItem -Path $extDir -Filter "*imagick*.dll" | Select-Object -First 1
           if ($imagickDll) {
             Write-Host "`n🖼️  Testing imagick with ImageMagick..."
             try {
               $testCode = "echo class_exists('Imagick') ? 'OK' : 'FAIL';"
               $output = & $phpExe -d "extension=$($imagickDll.FullName)" -r $testCode 2>&1
-              
+
               if ($output -match 'OK') {
                 Write-Host "✅ Imagick class is available"
                 $depTestResults['imagick'] = @{ success = $true }
@@ -688,14 +688,14 @@ jobs:
               $allSuccess = $false
             }
           }
-          
+
           $memcacheDll = Get-ChildItem -Path $extDir -Filter "*memcache*.dll" | Select-Object -First 1
           if ($memcacheDll) {
             Write-Host "`n💾 Testing memcache..."
             try {
               $testCode = "echo function_exists('memcache_connect') ? 'OK' : 'FAIL';"
               $output = & $phpExe -d "extension=$($memcacheDll.FullName)" -r $testCode 2>&1
-              
+
               if ($output -match 'OK') {
                 Write-Host "✅ Memcache functions are available"
                 $depTestResults['memcache'] = @{ success = $true }
@@ -708,14 +708,14 @@ jobs:
               $depTestResults['memcache'] = @{ success = $false; error = $_.Exception.Message }
             }
           }
-          
+
           $xdebugDll = Get-ChildItem -Path $extDir -Filter "*xdebug*.dll" | Select-Object -First 1
           if ($xdebugDll) {
             Write-Host "`n🐛 Testing xdebug..."
             try {
               $testCode = "echo extension_loaded('xdebug') ? 'OK' : 'FAIL';"
               $output = & $phpExe -d "zend_extension=$($xdebugDll.FullName)" -r $testCode 2>&1
-              
+
               if ($output -match 'OK') {
                 Write-Host "✅ Xdebug is loaded"
                 $depTestResults['xdebug'] = @{ success = $true }
@@ -730,7 +730,7 @@ jobs:
               $allSuccess = $false
             }
           }
-          
+
           $depTestResults | ConvertTo-Json -Depth 10 | Out-File "test-results/dependency-tests.json"
           echo "success=$allSuccess" >> $env:GITHUB_OUTPUT
 
@@ -742,17 +742,17 @@ jobs:
           $ErrorActionPreference = "Continue"
           $phpExe = "${{ steps.download-php.outputs.php-path }}"
           $extDir = "${{ steps.locate-extensions.outputs.ext-dir }}"
-          
+
           Write-Host "`n=== Phase 4: Functional Testing ==="
-          
+
           $depDirs = Get-ChildItem -Path "test-dependencies" -Directory -ErrorAction SilentlyContinue
           foreach ($dir in $depDirs) {
             $env:PATH = "$($dir.FullName);$env:PATH"
           }
-          
+
           $funcResults = @{}
           $allSuccess = $true
-          
+
           $imagickDll = Get-ChildItem -Path $extDir -Filter "*imagick*.dll" | Select-Object -First 1
           if ($imagickDll) {
             Write-Host "`n🖼️  Testing imagick functionality..."
@@ -785,14 +785,14 @@ jobs:
               $allSuccess = $false
             }
           }
-          
+
           $memcacheDll = Get-ChildItem -Path $extDir -Filter "*memcache*.dll" | Select-Object -First 1
           if ($memcacheDll) {
             Write-Host "`n💾 Testing memcache functionality..."
             try {
               $testCode = "echo function_exists('memcache_connect') ? 'memcache: OK' : 'FAIL';"
               $output = & $phpExe -d "extension=$($memcacheDll.FullName)" -r $testCode 2>&1
-              
+
               if ($output -match 'memcache: OK') {
                 Write-Host "✅ Memcache functions available"
                 $funcResults['memcache'] = @{ success = $true }
@@ -805,14 +805,14 @@ jobs:
               $funcResults['memcache'] = @{ success = $false; error = $_.Exception.Message }
             }
           }
-          
+
           $xdebugDll = Get-ChildItem -Path $extDir -Filter "*xdebug*.dll" | Select-Object -First 1
           if ($xdebugDll) {
             Write-Host "`n🐛 Testing xdebug functionality..."
             try {
               $testCode = "echo extension_loaded('xdebug') ? 'xdebug: OK' : 'FAIL';"
               $output = & $phpExe -d "zend_extension=$($xdebugDll.FullName)" -r $testCode 2>&1
-              
+
               if ($output -match 'xdebug: OK') {
                 Write-Host "✅ Xdebug is functional"
                 $funcResults['xdebug'] = @{ success = $true }
@@ -827,7 +827,7 @@ jobs:
               $allSuccess = $false
             }
           }
-          
+
           $funcResults | ConvertTo-Json -Depth 10 | Out-File "test-results/functional.json"
           echo "success=$allSuccess" >> $env:GITHUB_OUTPUT
 
@@ -836,9 +836,9 @@ jobs:
         run: |
           $version = "${{ matrix.version }}"
           $platform = "${{ matrix.platform }}"
-          
+
           Write-Host "`n=== Test Summary for PHP $version on $platform ==="
-          
+
           $phase1_1 = "${{ steps.download-php.outputs.success }}" -eq "true"
           $phase1_2 = "${{ steps.verify-php.outputs.success }}" -eq "true"
           $phase2_1 = "${{ steps.locate-extensions.outputs.success }}" -eq "true"
@@ -847,13 +847,13 @@ jobs:
           $phase3_1 = "${{ steps.download-dependencies.outputs.success }}" -eq "true"
           $phase3_2 = "${{ steps.test-with-dependencies.outputs.success }}" -eq "true"
           $phase4 = "${{ steps.functional-tests.outputs.success }}" -eq "true"
-          
+
           # Get error messages if any
           $error1_1 = "${{ steps.download-php.outputs.error }}"
           $error1_2 = "${{ steps.verify-php.outputs.error }}"
-          
+
           $summary = "### PHP $version - $platform`n`n"
-          
+
           $summary += "**Phase 1: Basic PHP Validation**`n"
           $summary += "- Download & Extract: $(if ($phase1_1) { '✅ PASS' } else { '❌ FAIL' })`n"
           if (-not $phase1_1 -and $error1_1) {
@@ -864,7 +864,7 @@ jobs:
             $summary += "  - Error: $error1_2`n"
           }
           $summary += "`n"
-          
+
           if ($phase1_2) {
             $summary += "**Phase 2: Extension Validation**`n"
             $summary += "- Locate Extensions: $(if ($phase2_1) { '✅ PASS' } else { '❌ FAIL' })`n"
@@ -876,7 +876,7 @@ jobs:
             }
             $summary += "`n"
           }
-          
+
           if ($phase2_3) {
             $summary += "**Phase 3: Dependency Validation**`n"
             $summary += "- Download Dependencies: $(if ($phase3_1) { '✅ PASS' } else { '❌ FAIL' })`n"
@@ -885,12 +885,12 @@ jobs:
             }
             $summary += "`n"
           }
-          
+
           if ($phase3_2) {
             $summary += "**Phase 4: Functional Testing**`n"
             $summary += "- Extension Functionality: $(if ($phase4) { '✅ PASS' } else { '⚠️  PARTIAL' })`n`n"
           }
-          
+
           if (Test-Path "test-results/extensions.json") {
             $extData = Get-Content "test-results/extensions.json" | ConvertFrom-Json
             if ($extData.PSObject.Properties.Count -gt 0) {
@@ -902,10 +902,10 @@ jobs:
               $summary += "`n"
             }
           }
-          
+
           # Overall status
           $allPassed = $phase1_1 -and $phase1_2 -and $phase2_1 -and $phase2_2 -and $phase2_3 -and $phase3_1 -and $phase3_2 -and $phase4
-          
+
           if ($allPassed) {
             $summary += "**Overall Status:** ✅ ALL TESTS PASSED`n"
           } else {
@@ -920,10 +920,10 @@ jobs:
             $summary += "- Check that extensions are compatible with PHP $version`n"
             $summary += "</details>`n"
           }
-          
+
           Write-Host $summary
           $summary | Out-File "test-results/summary-$platform.md"
-          
+
           # Set job outcome based on test results
           if (-not $allPassed) {
             Write-Host "##[error]Tests failed for PHP $version on $platform"
@@ -955,11 +955,11 @@ jobs:
           echo "## 🐘 PHP Module Tests - Results" > comment.md
           echo "" >> comment.md
           echo "**Test Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> comment.md
-          
+
           # Determine overall test status
           TEST_STATUS="${{ needs.test-php.result }}"
           VERSIONS='${{ needs.detect-versions.outputs.versions }}'
-          
+
           if [ "$TEST_STATUS" = "skipped" ] || [ "$VERSIONS" = "[]" ]; then
             echo "**Status:** ⏭️ Tests skipped - no versions to test" >> comment.md
             echo "" >> comment.md
@@ -980,30 +980,30 @@ jobs:
           else
             echo "**Status:** ⚠️ Tests completed with issues" >> comment.md
           fi
-          
+
           echo "" >> comment.md
-          
+
           # Generate badges for each version
           if [ "$TEST_STATUS" != "skipped" ] && [ "$VERSIONS" != "[]" ]; then
             echo "### 📊 Test Results by Version" >> comment.md
             echo "" >> comment.md
-            
+
             # Parse versions and check results
             VERSION_LIST=$(echo '${{ needs.detect-versions.outputs.versions }}' | jq -r '.[]')
             PLATFORMS='${{ needs.detect-versions.outputs.platforms }}'
             PLATFORM_LIST=$(echo "$PLATFORMS" | jq -r '.[]')
-            
+
             for version in $VERSION_LIST; do
               echo "#### PHP ${version}" >> comment.md
               echo "" >> comment.md
-              
+
               # Check results for each platform
               for platform in $PLATFORM_LIST; do
                 SUMMARY_FILE="all-results/test-results-${version}-${platform}/summary-${platform}.md"
-                
+
                 # URL encode the platform name for shields.io (replace hyphens with underscores)
                 BADGE_PLATFORM=$(echo "$platform" | sed 's/-/_/g')
-                
+
                 if [ -f "$SUMMARY_FILE" ]; then
                   # Check if tests passed by looking for "ALL TESTS PASSED" in summary
                   if grep -q "ALL TESTS PASSED" "$SUMMARY_FILE"; then
@@ -1018,15 +1018,15 @@ jobs:
                   echo "![${platform}](https://img.shields.io/badge/${BADGE_PLATFORM}-NO%20RESULTS-lightgrey?style=flat-square&logo=php&logoColor=white)" >> comment.md
                 fi
               done
-              
+
               echo "" >> comment.md
             done
-            
+
             echo "" >> comment.md
           fi
-          
+
           echo "" >> comment.md
-          
+
           # Check if artifacts exist
           if [ -d "all-results" ]; then
             # Count expected vs actual results
@@ -1034,10 +1034,10 @@ jobs:
             PLATFORM_COUNT=$(echo '${{ needs.detect-versions.outputs.platforms }}' | jq '. | length')
             TOTAL_EXPECTED=$((EXPECTED_COUNT * PLATFORM_COUNT))
             ACTUAL_COUNT=$(find all-results -name "summary-*.md" 2>/dev/null | wc -l)
-            
+
             echo "**Results:** $ACTUAL_COUNT of $TOTAL_EXPECTED tests completed" >> comment.md
             echo "" >> comment.md
-            
+
             # Check if there are any failures
             HAS_FAILURES=false
             for version_dir in all-results/test-results-*; do
@@ -1052,12 +1052,12 @@ jobs:
                 done
               fi
             done
-            
+
             # Only show detailed results if there are failures
             if [ "$HAS_FAILURES" = true ]; then
               echo "### 📋 Detailed Test Results" >> comment.md
               echo "" >> comment.md
-              
+
               for version_dir in all-results/test-results-*; do
                 if [ -d "$version_dir" ]; then
                   for summary_file in "$version_dir"/summary-*.md; do
@@ -1076,7 +1076,7 @@ jobs:
             echo "⚠️ No test results available" >> comment.md
             echo "" >> comment.md
           fi
-          
+
           if [ "$TEST_STATUS" != "skipped" ] && [ "$VERSIONS" != "[]" ]; then
             echo "---" >> comment.md
             echo "" >> comment.md
@@ -1090,7 +1090,7 @@ jobs:
             echo "" >> comment.md
             echo "_Check artifacts for detailed logs._" >> comment.md
           fi
-          
+
           cat comment.md
 
       - name: Comment on PR
@@ -1100,18 +1100,18 @@ jobs:
           script: |
             const fs = require('fs');
             const comment = fs.readFileSync('comment.md', 'utf8');
-            
+
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            
-            const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('🐘 PHP Module Tests')
             );
-            
+
             if (botComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -1127,7 +1127,7 @@ jobs:
                 body: comment
               });
             }
-      
+
       - name: Display Results Summary (Manual Run)
         if: github.event_name == 'workflow_dispatch'
         run: |
